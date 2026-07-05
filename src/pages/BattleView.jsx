@@ -6,6 +6,7 @@ import authService from '../services/authService'
 import matchmakingService from '../services/matchmakingService'
 import debateService from '../services/debateService'
 import { useAuth } from '../contexts/AuthContext'
+import BattleResults from '../components/BattleResults'
 
 const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const { user } = useAuth()
@@ -41,6 +42,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     persuasiveness: 5,
     evidence: 5
   })
+  const [showAIResults, setShowAIResults] = useState(false)
   
   // Random matching states
   const [matchingMode, setMatchingMode] = useState('manual') // 'manual' or 'random'
@@ -420,6 +422,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       case 'battle_completed':
         setBattleRoom(prev => ({ ...prev, ...data.data }))
         setShowVoting(true)
+        setShowAIResults(true)
         break
         
       case 'error':
@@ -899,23 +902,9 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
             </div>
           )}
 
-          {/* Battle Results */}
-          {battleRoom.status === 'completed' && battleRoom.winner_side && (
-            <div className={`rounded-lg shadow-md p-6 ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'}`}>
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <Trophy className="w-5 h-5 mr-2" />
-                Battle Results
-              </h3>
-              
-              <div className="text-center">
-                <div className="text-2xl font-bold mb-2">
-                  {battleRoom.winner_side === 'draw' ? 'Draw!' : `${battleRoom.winner_side.toUpperCase()} Wins!`}
-                </div>
-                <div className="text-gray-600">
-                  Battle completed
-                </div>
-              </div>
-            </div>
+          {/* AI Battle Results */}
+          {showAIResults && battleRoom.status === 'completed' && (
+            <BattleResults battleRoomId={battleRoom.id} darkMode={darkMode} />
           )}
         </div>
 

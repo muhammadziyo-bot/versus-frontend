@@ -115,6 +115,24 @@ class BattleService {
       throw error.response?.data || { detail: 'Failed to fetch battle stats' };
     }
   }
+
+  async getAIResult(battleId) {
+    try {
+      const response = await api.get(`/battles/${battleId}/ai-result`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to fetch AI result' };
+    }
+  }
+
+  async getRoundAIScores(battleId, roundId) {
+    try {
+      const response = await api.get(`/battles/${battleId}/rounds/${roundId}/ai-scores`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to fetch AI scores' };
+    }
+  }
 }
 
 export default new BattleService();
