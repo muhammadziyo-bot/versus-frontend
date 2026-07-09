@@ -28,6 +28,47 @@ const Login = ({ darkMode, onToggleMode }) => {
     e.preventDefault();
     setFormError('');
 
+    // Validate registration fields
+    if (!isLogin) {
+      // Validate username
+      const username = formData.username;
+      if (username.length < 3) {
+        setFormError('Username must be at least 3 characters long');
+        return;
+      }
+      if (username.length > 30) {
+        setFormError('Username must not exceed 30 characters');
+        return;
+      }
+      if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+        setFormError('Username can only contain letters, numbers, underscores, and hyphens');
+        return;
+      }
+
+      // Validate password
+      const password = formData.password;
+      if (password.length < 8) {
+        setFormError('Password must be at least 8 characters long');
+        return;
+      }
+      if (!/[A-Z]/.test(password)) {
+        setFormError('Password must contain at least one uppercase letter');
+        return;
+      }
+      if (!/[a-z]/.test(password)) {
+        setFormError('Password must contain at least one lowercase letter');
+        return;
+      }
+      if (!/\d/.test(password)) {
+        setFormError('Password must contain at least one digit');
+        return;
+      }
+      if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+        setFormError('Password must contain at least one special character');
+        return;
+      }
+    }
+
     try {
       if (isLogin) {
         await login({
