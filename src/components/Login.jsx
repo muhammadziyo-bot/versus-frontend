@@ -51,6 +51,10 @@ const Login = ({ darkMode, onToggleMode }) => {
         setFormError('Password must be at least 8 characters long');
         return;
       }
+      if (password.length > 72) {
+        setFormError('Password must not exceed 72 characters');
+        return;
+      }
       if (!/[A-Z]/.test(password)) {
         setFormError('Password must contain at least one uppercase letter');
         return;
