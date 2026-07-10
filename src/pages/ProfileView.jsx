@@ -4,6 +4,8 @@ import { User, Calendar, Trophy, Target, Shield, MessageCircle } from 'lucide-re
 import Header from '../components/Header'
 import axios from 'axios'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+
 function ProfileView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, onBack, onNavigate, onProfileSelect }) {
   const { username } = useParams()
   const [profileUser, setProfileUser] = useState(null)
@@ -22,7 +24,7 @@ function ProfileView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin
   const loadUserProfile = async () => {
     try {
       setLoading(true)
-      const response = await axios.get(`http://localhost:8000/api/users/username/${username}`)
+      const response = await axios.get(`${API_BASE_URL}/api/users/username/${username}`)
       setProfileUser(response.data)
       setError(null)
     } catch (err) {
