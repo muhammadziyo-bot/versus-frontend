@@ -74,7 +74,16 @@ function NotificationCenter({ darkMode, isOpen, onClose, user, isAuthenticated, 
 
   const handleBattleInvitation = (notification) => {
     try {
-      const data = notification.data ? JSON.parse(notification.data) : null
+      // Handle both string and object data
+      let data = null
+      if (notification.data) {
+        if (typeof notification.data === 'string') {
+          data = JSON.parse(notification.data)
+        } else {
+          data = notification.data
+        }
+      }
+      
       if (data && data.battle_id && onNavigateToBattle) {
         onNavigateToBattle(data.battle_id)
         onClose()
