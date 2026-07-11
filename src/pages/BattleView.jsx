@@ -443,6 +443,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         break
         
       case 'argument_submitted':
+        console.log('Argument submitted event received:', data.data)
         setRounds(prev => prev.map(round => 
           round.round_number === data.data.round_number 
             ? { ...round, [`${data.data.side}_argument`]: data.data.argument }
@@ -481,6 +482,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         
       case 'error':
         setError(data.data.message)
+        console.error('WebSocket error:', data.data.message)
         break
         
       default:
@@ -524,8 +526,11 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       console.log('Submitting argument for round', currentRound, ':', argumentText.trim())
       websocketService.submitArgument(battleRoom.id, currentRound, argumentText.trim())
       setArgumentText('')
+      // Optimistically update UI - will be refreshed by WebSocket event
+      setError(null)
     } else {
       console.error('Cannot submit argument:', { hasText: !!argumentText.trim(), hasBattle: !!battleRoom })
+      setError('Please enter an argument before submitting')
     }
   }
 
@@ -610,12 +615,19 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     const userSide = getUserSide()
     const hasSubmitted = round[`${userSide}_argument`]
     
+    // Enforce sequential submission: Con can only submit after Pro
+    if (userSide === 'con' && !round.pro_argument) {
+      console.log('Cannot submit: Pro must submit first')
+      return false
+    }
+    
     const canSubmit = battleRoom.status === 'active' && round.status === 'active' && !hasSubmitted
     console.log('Can submit argument?', { 
       battleStatus: battleRoom.status, 
       roundStatus: round.status, 
       userSide, 
       hasSubmitted, 
+      proSubmitted: !!round.pro_argument,
       canSubmit 
     })
     
@@ -998,17 +1010,24 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
               {canSubmitArgument() && (
                 <div className="mt-6 border-t pt-4">
                   <h4 className="font-medium mb-2">Submit Your Argument ({getUserSide()})</h4>
+                  {getUserSide() === 'con' && !getCurrentRound()?.pro_argument && (
+                    <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                      ⏳ Waiting for Pro to submit their argument first...
+                    </div>
+                  )}
                   <textarea
                     ref={argumentRef}
                     value={argumentText}
                     onChange={(e) => setArgumentText(e.target.value)}
-                    className={`w-full p-3 border rounded-lg ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                    disabled={getUserSide() === 'con' && !getCurrentRound()?.pro_argument}
+                    className={`w-full p-3 border rounded-lg ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'} ${getUserSide() === 'con' && !getCurrentRound()?.pro_argument ? 'opacity-50 cursor-not-allowed' : ''}`}
                     rows="4"
                     placeholder="Enter your argument for this round..."
                   />
                   <button
                     onClick={submitArgument}
-                    className="mt-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+                    disabled={getUserSide() === 'con' && !getCurrentRound()?.pro_argument}
+                    className={`mt-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 ${getUserSide() === 'con' && !getCurrentRound()?.pro_argument ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     Submit Argument
                   </button>
