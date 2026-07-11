@@ -43,12 +43,15 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     evidence: 5
   })
   const [showAIResults, setShowAIResults] = useState(false)
+  const [timeRemaining, setTimeRemaining] = useState(0)
+  const [showRoundHistory, setShowRoundHistory] = useState(false)
   
   // Random matching states
   const [matchingMode, setMatchingMode] = useState('manual') // 'manual' or 'random'
   
   const messagesEndRef = useRef(null)
   const argumentRef = useRef(null)
+  const timerRef = useRef(null)
 
   useEffect(() => {
     if (battleRoomId) {
@@ -66,8 +69,36 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       if (battleRoom) {
         websocketService.disconnectFromBattle(battleRoom.id)
       }
+      
+      // Clear timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+      }
     }
   }, [debateId, battleRoomId, isSearching])
+
+  // Timer effect
+  useEffect(() => {
+    if (battleRoom && battleRoom.status === 'active' && battleRoom.round_ends_at) {
+      const updateTimer = () => {
+        const now = new Date()
+        const endsAt = new Date(battleRoom.round_ends_at)
+        const remaining = Math.max(0, Math.floor((endsAt - now) / 1000))
+        setTimeRemaining(remaining)
+      }
+      
+      updateTimer()
+      timerRef.current = setInterval(updateTimer, 1000)
+      
+      return () => {
+        if (timerRef.current) {
+          clearInterval(timerRef.current)
+        }
+      }
+    } else {
+      setTimeRemaining(0)
+    }
+  }, [battleRoom])
 
   // Handle page visibility change (user switching tabs/closing browser)
   useEffect(() => {
@@ -403,6 +434,10 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         setCurrentRound(data.data.battle.current_round)
         break
         
+      case 'message_history':
+        setMessages(data.data.messages || [])
+        break
+        
       case 'chat':
         setMessages(prev => [...prev, data.data])
         break
@@ -413,10 +448,29 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
             ? { ...round, [`${data.data.side}_argument`]: data.data.argument }
             : round
         ))
+        // Refresh battle state to get updated round status
+        if (battleRoom) {
+          loadBattleDetails(battleRoom.id)
+        }
+        break
+        
+      case 'round_completed':
+        setRounds(prev => prev.map(round => 
+          round.round_number === data.data.round_number 
+            ? { ...round, status: 'completed' }
+            : round
+        ))
+        if (data.data.next_round) {
+          setCurrentRound(data.data.next_round)
+        }
         break
         
       case 'battle_started':
         setBattleRoom(prev => ({ ...prev, ...data.data }))
+        // Refresh battle details to get updated round status
+        if (battleRoom) {
+          loadBattleDetails(battleRoom.id)
+        }
         break
         
       case 'battle_completed':
@@ -467,8 +521,11 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
 
   const submitArgument = () => {
     if (argumentText.trim() && battleRoom) {
+      console.log('Submitting argument for round', currentRound, ':', argumentText.trim())
       websocketService.submitArgument(battleRoom.id, currentRound, argumentText.trim())
       setArgumentText('')
+    } else {
+      console.error('Cannot submit argument:', { hasText: !!argumentText.trim(), hasBattle: !!battleRoom })
     }
   }
 
@@ -499,6 +556,39 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     return `User ${userId}`
   }
 
+  const getUserAvatar = (userId) => {
+    if (!battleRoom) return null
+    if (userId === battleRoom.pro_user_id && battleRoom.pro_user) {
+      return battleRoom.pro_user.avatar_url
+    }
+    if (userId === battleRoom.con_user_id && battleRoom.con_user) {
+      return battleRoom.con_user.avatar_url
+    }
+    return null
+  }
+
+  const getUserElo = (userId) => {
+    if (!battleRoom) return 400
+    if (userId === battleRoom.pro_user_id && battleRoom.pro_user) {
+      return battleRoom.pro_user.elo_rating || 400
+    }
+    if (userId === battleRoom.con_user_id && battleRoom.con_user) {
+      return battleRoom.con_user.elo_rating || 400
+    }
+    return 400
+  }
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return null
+    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
   const isOpponentConnected = () => {
     // Check if opponent is connected via WebSocket
     // This would be determined by WebSocket presence
@@ -512,12 +602,24 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
 
   const canSubmitArgument = () => {
     const round = getCurrentRound()
-    if (!round || !battleRoom) return false
+    if (!round || !battleRoom) {
+      console.log('Cannot submit: missing round or battleRoom', { round: !!round, battleRoom: !!battleRoom })
+      return false
+    }
     
     const userSide = getUserSide()
     const hasSubmitted = round[`${userSide}_argument`]
     
-    return battleRoom.status === 'active' && round.status === 'active' && !hasSubmitted
+    const canSubmit = battleRoom.status === 'active' && round.status === 'active' && !hasSubmitted
+    console.log('Can submit argument?', { 
+      battleStatus: battleRoom.status, 
+      roundStatus: round.status, 
+      userSide, 
+      hasSubmitted, 
+      canSubmit 
+    })
+    
+    return canSubmit
   }
 
   if (loading) {
@@ -780,7 +882,19 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
             <div className="text-sm text-gray-500">Pro User</div>
-            <div className="font-medium">{getUserName(battleRoom.pro_user_id)}</div>
+            <div className="flex items-center justify-center space-x-2">
+              {getUserAvatar(battleRoom.pro_user_id) && (
+                <img 
+                  src={getUserAvatar(battleRoom.pro_user_id)} 
+                  alt="Pro avatar"
+                  className="w-8 h-8 rounded-full"
+                />
+              )}
+              <div>
+                <div className="font-medium">{getUserName(battleRoom.pro_user_id)}</div>
+                <div className="text-xs text-gray-500">ELO: {getUserElo(battleRoom.pro_user_id)}</div>
+              </div>
+            </div>
             {getUserSide() === 'pro' && <div className="text-xs text-blue-500">You</div>}
           </div>
           
@@ -788,11 +902,34 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
             <div className="text-sm text-gray-500">Status</div>
             <div className="font-medium capitalize">{battleRoom.status}</div>
             <div className="text-xs text-gray-500">Round {currentRound}/{battleRoom.max_rounds}</div>
+            {battleRoom.status === 'active' && timeRemaining > 0 && (
+              <div className={`text-xs font-medium ${timeRemaining < 30 ? 'text-red-500' : 'text-green-500'}`}>
+                <Timer className="w-3 h-3 inline mr-1" />
+                {formatTime(timeRemaining)}
+              </div>
+            )}
+            {battleRoom.status === 'completed' && battleRoom.completed_at && (
+              <div className="text-xs text-gray-500">
+                Completed: {formatTimestamp(battleRoom.completed_at)}
+              </div>
+            )}
           </div>
           
           <div>
             <div className="text-sm text-gray-500">Con User</div>
-            <div className="font-medium">{getUserName(battleRoom.con_user_id)}</div>
+            <div className="flex items-center justify-center space-x-2">
+              {getUserAvatar(battleRoom.con_user_id) && (
+                <img 
+                  src={getUserAvatar(battleRoom.con_user_id)} 
+                  alt="Con avatar"
+                  className="w-8 h-8 rounded-full"
+                />
+              )}
+              <div>
+                <div className="font-medium">{getUserName(battleRoom.con_user_id)}</div>
+                <div className="text-xs text-gray-500">ELO: {getUserElo(battleRoom.con_user_id)}</div>
+              </div>
+            </div>
             {getUserSide() === 'con' && <div className="text-xs text-blue-500">You</div>}
           </div>
         </div>
@@ -804,12 +941,30 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
           {/* Current Round */}
           {battleRoom.status === 'active' && (
             <div className={`rounded-lg shadow-md p-6 ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'}`}>
-              <h3 className="text-lg font-semibold mb-4">Round {currentRound}</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Round {currentRound}</h3>
+                <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                  getCurrentRound()?.status === 'active' 
+                    ? 'bg-green-100 text-green-800' 
+                    : getCurrentRound()?.status === 'completed'
+                    ? 'bg-gray-100 text-gray-800'
+                    : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {getCurrentRound()?.status || 'waiting'}
+                </div>
+              </div>
               
               <div className="space-y-4">
                 {/* Pro Argument */}
                 <div className="border-l-4 border-blue-500 pl-4">
-                  <div className="font-medium text-blue-700 mb-2">Pro Argument</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-medium text-blue-700">Pro Argument</div>
+                    {getCurrentRound()?.pro_submitted_at && (
+                      <div className="text-xs text-gray-500">
+                        {formatTimestamp(getCurrentRound().pro_submitted_at)}
+                      </div>
+                    )}
+                  </div>
                   {getCurrentRound()?.pro_argument ? (
                     <div className="text-gray-700">
                       {getCurrentRound().pro_argument}
@@ -821,7 +976,14 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
                 
                 {/* Con Argument */}
                 <div className="border-l-4 border-red-500 pl-4">
-                  <div className="font-medium text-red-700 mb-2">Con Argument</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-medium text-red-700">Con Argument</div>
+                    {getCurrentRound()?.con_submitted_at && (
+                      <div className="text-xs text-gray-500">
+                        {formatTimestamp(getCurrentRound().con_submitted_at)}
+                      </div>
+                    )}
+                  </div>
                   {getCurrentRound()?.con_argument ? (
                     <div className="text-gray-700">
                       {getCurrentRound().con_argument}
@@ -850,6 +1012,64 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
                   >
                     Submit Argument
                   </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Round History */}
+          {battleRoom.status !== 'waiting' && (
+            <div className={`rounded-lg shadow-md p-6 ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'}`}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Round History</h3>
+                <button
+                  onClick={() => setShowRoundHistory(!showRoundHistory)}
+                  className="text-sm text-blue-500 hover:underline"
+                >
+                  {showRoundHistory ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              
+              {showRoundHistory && (
+                <div className="space-y-4">
+                  {rounds.map((round) => (
+                    <div key={round.id} className={`p-4 rounded-lg border ${
+                      round.round_number === currentRound 
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                        : 'border-gray-200 dark:border-gray-700'
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-medium">Round {round.round_number}</div>
+                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          round.status === 'completed' 
+                            ? 'bg-green-100 text-green-800' 
+                            : round.status === 'active'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {round.status}
+                        </div>
+                      </div>
+                      
+                      {round.pro_argument && (
+                        <div className="mb-2">
+                          <div className="text-xs text-blue-600 font-medium">Pro:</div>
+                          <div className="text-sm text-gray-700">{round.pro_argument}</div>
+                        </div>
+                      )}
+                      
+                      {round.con_argument && (
+                        <div className="mb-2">
+                          <div className="text-xs text-red-600 font-medium">Con:</div>
+                          <div className="text-sm text-gray-700">{round.con_argument}</div>
+                        </div>
+                      )}
+                      
+                      {!round.pro_argument && !round.con_argument && (
+                        <div className="text-sm text-gray-400 italic">No arguments submitted</div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -890,6 +1110,83 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
                     rows="3"
                     placeholder="Explain your reasoning..."
                   />
+                </div>
+                
+                {/* Detailed Voting Criteria */}
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-medium mb-3">Rate the debate (1-10)</h4>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        Confidence: {voteData.confidence}
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={voteData.confidence}
+                        onChange={(e) => setVoteData(prev => ({ ...prev, confidence: parseInt(e.target.value) }))}
+                        className="w-full"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        Argument Quality: {voteData.argument_quality}
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={voteData.argument_quality}
+                        onChange={(e) => setVoteData(prev => ({ ...prev, argument_quality: parseInt(e.target.value) }))}
+                        className="w-full"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        Clarity: {voteData.clarity}
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={voteData.clarity}
+                        onChange={(e) => setVoteData(prev => ({ ...prev, clarity: parseInt(e.target.value) }))}
+                        className="w-full"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        Persuasiveness: {voteData.persuasiveness}
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={voteData.persuasiveness}
+                        onChange={(e) => setVoteData(prev => ({ ...prev, persuasiveness: parseInt(e.target.value) }))}
+                        className="w-full"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        Evidence: {voteData.evidence}
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={voteData.evidence}
+                        onChange={(e) => setVoteData(prev => ({ ...prev, evidence: parseInt(e.target.value) }))}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
                 </div>
                 
                 <button
