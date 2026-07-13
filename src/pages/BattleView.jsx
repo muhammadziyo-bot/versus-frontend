@@ -432,6 +432,11 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         setRounds(data.data.rounds || [])
         setVotes(data.data.votes || [])
         setCurrentRound(data.data.battle.current_round)
+        // Load debate title if debate_id is present
+        if (data.data.battle.debate_id && !debateTitle) {
+          loadDebateTitle(data.data.battle.debate_id)
+        }
+        console.log('Battle state updated:', data.data.battle)
         break
         
       case 'message_history':
@@ -516,7 +521,15 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
 
   const sendChatMessage = () => {
     if (chatMessage.trim() && battleRoom) {
+      console.log('Sending chat message:', chatMessage.trim())
       websocketService.sendChatMessage(battleRoom.id, chatMessage.trim())
+      // Optimistically add message to UI
+      setMessages(prev => [...prev, {
+        user_id: user?.id,
+        username: user?.username,
+        message: chatMessage.trim(),
+        timestamp: new Date().toISOString()
+      }])
       setChatMessage('')
     }
   }
@@ -546,8 +559,13 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   }
 
   const getUserSide = () => {
-    if (!battleRoom || !user) return null
-    return user.id === battleRoom.pro_user_id ? 'pro' : 'con'
+    if (!battleRoom || !user) {
+      console.log('getUserSide: missing battleRoom or user', { battleRoom: !!battleRoom, user: !!user })
+      return null
+    }
+    const side = user.id === battleRoom.pro_user_id ? 'pro' : 'con'
+    console.log('getUserSide:', { userId: user.id, proUserId: battleRoom.pro_user_id, conUserId: battleRoom.con_user_id, side })
+    return side
   }
 
   const getUserName = (userId) => {
@@ -613,6 +631,11 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     }
     
     const userSide = getUserSide()
+    if (!userSide) {
+      console.log('Cannot submit: user side not determined')
+      return false
+    }
+    
     const hasSubmitted = round[`${userSide}_argument`]
     
     // Enforce sequential submission: Con can only submit after Pro
