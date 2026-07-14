@@ -48,6 +48,15 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const [showSideSelection, setShowSideSelection] = useState(false)
   const [selectedSide, setSelectedSide] = useState(null)
   
+  // Use ref to store current user data that can be updated immediately
+  const currentUserRef = useRef(user)
+  
+  // Update ref whenever user changes
+  useEffect(() => {
+    currentUserRef.current = user
+    console.log('User ref updated:', user)
+  }, [user])
+  
   // Random matching states
   const [matchingMode, setMatchingMode] = useState('manual') // 'manual' or 'random'
   
@@ -179,11 +188,29 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       setError(null)
       setShowCreateBattle(false)
 
-      // Refresh current user data to ensure we have the correct user ID
+      // Force user refresh by calling /auth/me endpoint directly
+      let freshUserData = user
       try {
-        const freshUser = await authService.getCurrentUser()
-        updateUser(freshUser)
-        console.log('Refreshed user data:', freshUser)
+        const token = localStorage.getItem('access_token')
+        console.log('=== USER REFRESH ===')
+        console.log('Attempting to refresh user with token:', token ? 'exists' : 'missing')
+        console.log('Current user in state before refresh:', user)
+        
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/auth/me`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+        
+        if (response.ok) {
+          freshUserData = await response.json()
+          console.log('Successfully refreshed user data:', freshUserData)
+          updateUser(freshUserData)
+          console.log('Updated user in auth context')
+        } else {
+          console.error('Failed to refresh user - status:', response.status)
+        }
       } catch (err) {
         console.error('Failed to refresh user data:', err)
       }
@@ -206,8 +233,8 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       // Connect to WebSocket
       await connectToBattle(roomId)
 
-      // Load rounds and votes
-      await loadBattleDetails(roomId)
+      // Load rounds and votes - pass fresh user data
+      await loadBattleDetails(roomId, freshUserData)
 
     } catch (err) {
       setError('Failed to load battle room')
@@ -549,7 +576,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     }
   }
 
-  const loadBattleDetails = async (battleId) => {
+  const loadBattleDetails = async (battleId, userData = user) => {
     try {
       const [battle, battleRounds, battleVotes] = await Promise.all([
         battleService.getBattleRoom(battleId),
@@ -559,8 +586,8 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       
       console.log('=== BATTLE DETAILS LOADED ===')
       console.log('Battle Room:', battle)
-      console.log('Current User:', user)
-      console.log('User ID type:', typeof user?.id, user?.id)
+      console.log('Current User (from param):', userData)
+      console.log('User ID type:', typeof userData?.id, userData?.id)
       console.log('Pro User ID type:', typeof battle?.pro_user_id, battle?.pro_user_id)
       console.log('Con User ID type:', typeof battle?.con_user_id, battle?.con_user_id)
       console.log('Pro User:', battle?.pro_user)
@@ -622,22 +649,22 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     }
   }
 
-  const getUserSide = () => {
-    if (!battleRoom || !user) {
-      console.log('getUserSide: missing battleRoom or user', { battleRoom: !!battleRoom, user: !!user })
+  const getUserSide = (userData = currentUserRef.current) => {
+    if (!battleRoom || !userData) {
+      console.log('getUserSide: missing battleRoom or user', { battleRoom: !!battleRoom, user: !!userData })
       return null
     }
     
     // Convert both to numbers for comparison to handle string/number mismatches
-    const userId = Number(user.id)
+    const userId = Number(userData.id)
     const proUserId = Number(battleRoom.pro_user_id)
     const conUserId = Number(battleRoom.con_user_id)
     
     const side = userId === proUserId ? 'pro' : userId === conUserId ? 'con' : null
     
     console.log('getUserSide:', { 
-      userId: user.id, 
-      userIdType: typeof user.id,
+      userId: userData.id, 
+      userIdType: typeof userData.id,
       userIdNumber: userId,
       proUserId: battleRoom.pro_user_id,
       proUserIdType: typeof battleRoom.pro_user_id,
@@ -645,7 +672,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       conUserId: battleRoom.con_user_id,
       conUserIdType: typeof battleRoom.con_user_id,
       conUserIdNumber: conUserId,
-      username: user.username,
+      username: userData.username,
       side,
       battleRoomStatus: battleRoom.status,
       comparison: {
