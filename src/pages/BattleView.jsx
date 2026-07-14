@@ -80,9 +80,9 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     }
   }, [debateId, battleRoomId, isSearching])
 
-  // Timer effect
+  // Timer effect - only start when battle is active AND rounds are active
   useEffect(() => {
-    if (battleRoom && battleRoom.status === 'active' && battleRoom.round_ends_at) {
+    if (battleRoom && battleRoom.status === 'active' && getCurrentRound()?.status === 'active' && battleRoom.round_ends_at) {
       const updateTimer = () => {
         const now = new Date()
         const endsAt = new Date(battleRoom.round_ends_at)
@@ -101,7 +101,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     } else {
       setTimeRemaining(0)
     }
-  }, [battleRoom])
+  }, [battleRoom, rounds])
 
   // Handle page visibility change (user switching tabs/closing browser)
   useEffect(() => {
@@ -1065,7 +1065,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold mb-2 flex items-center justify-center">
               <Sword className="w-6 h-6 mr-2" />
-              Choose Your Side
+              Battle Ready
             </h2>
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               Both players are ready! Review your assigned sides below.
@@ -1075,7 +1075,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
           <div className="grid grid-cols-2 gap-8 mb-8">
             {/* Pro Side */}
             <div className={`p-6 rounded-lg border-2 transition-all ${
-              getUserSide() === 'pro' 
+              userSide === 'pro' 
                 ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
                 : 'border-gray-300 dark:border-gray-700'
             }`}>
@@ -1098,7 +1098,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
                     <div className="text-xs text-gray-500">ELO: {getUserElo(battleRoom.pro_user_id)}</div>
                   </div>
                 </div>
-                {getUserSide() === 'pro' && (
+                {userSide === 'pro' && (
                   <div className="mt-4 px-3 py-1 bg-blue-500 text-white rounded-full text-sm font-medium">
                     You are PRO
                   </div>
@@ -1108,7 +1108,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
 
             {/* Con Side */}
             <div className={`p-6 rounded-lg border-2 transition-all ${
-              getUserSide() === 'con' 
+              userSide === 'con' 
                 ? 'border-red-500 bg-red-50 dark:bg-red-900/20' 
                 : 'border-gray-300 dark:border-gray-700'
             }`}>
@@ -1131,7 +1131,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
                     <div className="text-xs text-gray-500">ELO: {getUserElo(battleRoom.con_user_id)}</div>
                   </div>
                 </div>
-                {getUserSide() === 'con' && (
+                {userSide === 'con' && (
                   <div className="mt-4 px-3 py-1 bg-red-500 text-white rounded-full text-sm font-medium">
                     You are CON
                   </div>
@@ -1150,33 +1150,6 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
               </p>
             </div>
             
-            <button
-              onClick={startBattle}
-              className="bg-green-500 text-white px-8 py-3 rounded-lg hover:bg-green-600 font-medium flex items-center justify-center mx-auto"
-            >
-              <Play className="w-5 h-5 mr-2" />
-              Start Battle
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Show Start Battle button even if status is active but rounds are waiting */}
-      {battleRoom.status === 'active' && getCurrentRound()?.status === 'waiting' && (
-        <div className={`rounded-lg shadow-md p-8 mb-6 ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'}`}>
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-2 flex items-center justify-center">
-              <Sword className="w-6 h-6 mr-2" />
-              Battle Ready
-            </h2>
-            <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              Both players are ready! Click to start the battle.
-            </p>
-            <div className={`mb-4 p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-              <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                <strong>Topic:</strong> {debateTitle || 'Loading...'}
-              </p>
-            </div>
             <button
               onClick={startBattle}
               className="bg-green-500 text-white px-8 py-3 rounded-lg hover:bg-green-600 font-medium flex items-center justify-center mx-auto"
