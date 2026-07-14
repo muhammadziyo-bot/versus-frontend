@@ -45,6 +45,8 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const [showAIResults, setShowAIResults] = useState(false)
   const [timeRemaining, setTimeRemaining] = useState(0)
   const [showRoundHistory, setShowRoundHistory] = useState(false)
+  const [showSideSelection, setShowSideSelection] = useState(false)
+  const [selectedSide, setSelectedSide] = useState(null)
   
   // Random matching states
   const [matchingMode, setMatchingMode] = useState('manual') // 'manual' or 'random'
@@ -477,6 +479,12 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         if (battleRoom) {
           loadBattleDetails(battleRoom.id)
         }
+        // Hide side selection when battle starts
+        setShowSideSelection(false)
+        break
+        
+      case 'side_selected':
+        setBattleRoom(prev => ({ ...prev, ...data.data }))
         break
         
       case 'battle_completed':
@@ -880,9 +888,13 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
                 <Sword className="w-6 h-6 mr-2" />
                 Battle Room #{battleRoom.id}
               </h1>
-              {debateTitle && (
+              {debateTitle ? (
                 <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Topic: {debateTitle}
+                  <span className="font-medium">Topic:</span> {debateTitle}
+                </p>
+              ) : (
+                <p className={`text-sm mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Loading topic...
                 </p>
               )}
             </div>
@@ -900,16 +912,6 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
               }`}>
                 {isOpponentConnected() ? 'Opponent Ready' : 'Waiting for Opponent'}
               </div>
-            )}
-            
-            {battleRoom.status === 'waiting' && (
-              <button
-                onClick={startBattle}
-                className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 flex items-center"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                Start Battle
-              </button>
             )}
           </div>
         </div>
@@ -970,6 +972,108 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         </div>
       </div>
 
+      {/* Side Selection / Battle Ready Screen */}
+      {battleRoom.status === 'waiting' && (
+        <div className={`rounded-lg shadow-md p-8 mb-6 ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'}`}>
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold mb-2 flex items-center justify-center">
+              <Sword className="w-6 h-6 mr-2" />
+              Choose Your Side
+            </h2>
+            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Both players are ready! Review your assigned sides below.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-8 mb-8">
+            {/* Pro Side */}
+            <div className={`p-6 rounded-lg border-2 transition-all ${
+              getUserSide() === 'pro' 
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                : 'border-gray-300 dark:border-gray-700'
+            }`}>
+              <div className="text-center">
+                <div className="text-3xl mb-4">⚔️</div>
+                <h3 className="text-xl font-bold text-blue-600 mb-2">PRO</h3>
+                <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Arguing in favor of the topic
+                </p>
+                <div className="flex items-center justify-center space-x-2 mb-2">
+                  {getUserAvatar(battleRoom.pro_user_id) && (
+                    <img 
+                      src={getUserAvatar(battleRoom.pro_user_id)} 
+                      alt="Pro avatar"
+                      className="w-10 h-10 rounded-full"
+                    />
+                  )}
+                  <div className="text-left">
+                    <div className="font-medium">{getUserName(battleRoom.pro_user_id)}</div>
+                    <div className="text-xs text-gray-500">ELO: {getUserElo(battleRoom.pro_user_id)}</div>
+                  </div>
+                </div>
+                {getUserSide() === 'pro' && (
+                  <div className="mt-4 px-3 py-1 bg-blue-500 text-white rounded-full text-sm font-medium">
+                    You are PRO
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Con Side */}
+            <div className={`p-6 rounded-lg border-2 transition-all ${
+              getUserSide() === 'con' 
+                ? 'border-red-500 bg-red-50 dark:bg-red-900/20' 
+                : 'border-gray-300 dark:border-gray-700'
+            }`}>
+              <div className="text-center">
+                <div className="text-3xl mb-4">🛡️</div>
+                <h3 className="text-xl font-bold text-red-600 mb-2">CON</h3>
+                <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Arguing against the topic
+                </p>
+                <div className="flex items-center justify-center space-x-2 mb-2">
+                  {getUserAvatar(battleRoom.con_user_id) && (
+                    <img 
+                      src={getUserAvatar(battleRoom.con_user_id)} 
+                      alt="Con avatar"
+                      className="w-10 h-10 rounded-full"
+                    />
+                  )}
+                  <div className="text-left">
+                    <div className="font-medium">{getUserName(battleRoom.con_user_id)}</div>
+                    <div className="text-xs text-gray-500">ELO: {getUserElo(battleRoom.con_user_id)}</div>
+                  </div>
+                </div>
+                {getUserSide() === 'con' && (
+                  <div className="mt-4 px-3 py-1 bg-red-500 text-white rounded-full text-sm font-medium">
+                    You are CON
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="text-center">
+            <div className={`mb-4 p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+              <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <strong>Topic:</strong> {debateTitle || 'Loading...'}
+              </p>
+              <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {battleRoom.max_rounds} rounds • {Math.floor(battleRoom.round_time_limit / 60)} minutes per round
+              </p>
+            </div>
+            
+            <button
+              onClick={startBattle}
+              className="bg-green-500 text-white px-8 py-3 rounded-lg hover:bg-green-600 font-medium flex items-center justify-center mx-auto"
+            >
+              <Play className="w-5 h-5 mr-2" />
+              Start Battle
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Battle Area */}
         <div className="lg:col-span-2 space-y-6">
@@ -1029,33 +1133,119 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
                 </div>
               </div>
               
-              {/* Argument Submission */}
-              {canSubmitArgument() && (
-                <div className="mt-6 border-t pt-4">
-                  <h4 className="font-medium mb-2">Submit Your Argument ({getUserSide()})</h4>
-                  {getUserSide() === 'con' && !getCurrentRound()?.pro_argument && (
-                    <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                      ⏳ Waiting for Pro to submit their argument first...
-                    </div>
-                  )}
-                  <textarea
-                    ref={argumentRef}
-                    value={argumentText}
-                    onChange={(e) => setArgumentText(e.target.value)}
-                    disabled={getUserSide() === 'con' && !getCurrentRound()?.pro_argument}
-                    className={`w-full p-3 border rounded-lg ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'} ${getUserSide() === 'con' && !getCurrentRound()?.pro_argument ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    rows="4"
-                    placeholder="Enter your argument for this round..."
-                  />
-                  <button
-                    onClick={submitArgument}
-                    disabled={getUserSide() === 'con' && !getCurrentRound()?.pro_argument}
-                    className={`mt-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 ${getUserSide() === 'con' && !getCurrentRound()?.pro_argument ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    Submit Argument
-                  </button>
+              {/* Argument Submission Area */}
+              <div className="mt-6 border-t pt-4">
+                <h4 className="font-medium mb-4 flex items-center">
+                  <Send className="w-4 h-4 mr-2" />
+                  Submit Your Argument
+                </h4>
+                
+                {/* Status indicator for submission order */}
+                <div className={`mb-4 p-3 rounded-lg ${
+                  getCurrentRound()?.pro_argument && !getCurrentRound()?.con_argument
+                    ? 'bg-blue-50 border border-blue-200 dark:bg-blue-900/20 dark:border-blue-800'
+                    : !getCurrentRound()?.pro_argument
+                    ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'
+                    : 'bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800'
+                }`}>
+                  <div className="text-sm">
+                    {getCurrentRound()?.pro_argument && !getCurrentRound()?.con_argument ? (
+                      <div className="text-blue-700 dark:text-blue-300">
+                        <strong>✓ Pro argument submitted</strong> - Con can now submit their argument
+                      </div>
+                    ) : !getCurrentRound()?.pro_argument ? (
+                      <div className="text-yellow-700 dark:text-yellow-300">
+                        <strong>⏳ Waiting for Pro</strong> - Pro must submit their argument first
+                      </div>
+                    ) : (
+                      <div className="text-green-700 dark:text-green-300">
+                        <strong>✓ Both arguments submitted</strong> - Round complete
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
+
+                {/* Argument input form */}
+                {canSubmitArgument() && (
+                  <div className="space-y-3">
+                    <div className={`p-3 rounded-lg border-l-4 ${
+                      getUserSide() === 'pro' 
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                        : 'border-red-500 bg-red-50 dark:bg-red-900/20'
+                    }`}>
+                      <div className="text-sm font-medium mb-1">
+                        You are: <span className={`font-bold ${getUserSide() === 'pro' ? 'text-blue-600' : 'text-red-600'}`}>
+                          {getUserSide() === 'pro' ? 'PRO' : 'CON'}
+                        </span>
+                      </div>
+                      {getUserSide() === 'con' && !getCurrentRound()?.pro_argument && (
+                        <div className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                          ⏳ Your input is disabled until Pro submits their argument
+                        </div>
+                      )}
+                    </div>
+                    
+                    <textarea
+                      ref={argumentRef}
+                      value={argumentText}
+                      onChange={(e) => setArgumentText(e.target.value)}
+                      disabled={getUserSide() === 'con' && !getCurrentRound()?.pro_argument}
+                      className={`w-full p-4 border rounded-lg resize-none ${
+                        darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+                      } ${
+                        getUserSide() === 'con' && !getCurrentRound()?.pro_argument 
+                          ? 'opacity-50 cursor-not-allowed' 
+                          : 'focus:ring-2 focus:ring-blue-500'
+                      }`}
+                      rows="5"
+                      placeholder={
+                        getUserSide() === 'con' && !getCurrentRound()?.pro_argument
+                          ? 'Waiting for Pro to submit...'
+                          : `Enter your ${getUserSide()} argument for this round...`
+                      }
+                    />
+                    
+                    <button
+                      onClick={submitArgument}
+                      disabled={getUserSide() === 'con' && !getCurrentRound()?.pro_argument || !argumentText.trim()}
+                      className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
+                        getUserSide() === 'con' && !getCurrentRound()?.pro_argument || !argumentText.trim()
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-blue-500 text-white hover:bg-blue-600'
+                      }`}
+                    >
+                      {getUserSide() === 'con' && !getCurrentRound()?.pro_argument 
+                        ? 'Wait for Pro' 
+                        : 'Submit Argument'
+                      }
+                    </button>
+                  </div>
+                )}
+                
+                {/* Message when user already submitted */}
+                {!canSubmitArgument() && getCurrentRound() && (
+                  <div className={`p-4 rounded-lg ${
+                    getCurrentRound()?.[`${getUserSide()}_argument`]
+                      ? 'bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800'
+                      : 'bg-gray-50 border border-gray-200 dark:bg-gray-800 dark:border-gray-700'
+                  }`}>
+                    <div className="text-sm">
+                      {getCurrentRound()?.[`${getUserSide()}_argument`] ? (
+                        <div className="text-green-700 dark:text-green-300">
+                          <strong>✓ You have submitted your argument</strong>
+                        </div>
+                      ) : (
+                        <div className="text-gray-600 dark:text-gray-400">
+                          {getUserSide() === 'con' && !getCurrentRound()?.pro_argument
+                            ? 'Waiting for Pro to submit their argument first...'
+                            : 'Waiting for round to start...'
+                          }
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

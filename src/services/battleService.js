@@ -133,6 +133,15 @@ class BattleService {
       throw error.response?.data || { detail: 'Failed to fetch AI scores' };
     }
   }
+
+  async selectSide(battleId, side) {
+    try {
+      const response = await api.post(`/battles/${battleId}/select-side`, { side });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to select side' };
+    }
+  }
 }
 
 export default new BattleService();
