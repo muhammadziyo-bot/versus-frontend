@@ -9,7 +9,7 @@ import { useAuth } from '../contexts/AuthContext'
 import BattleResults from '../components/BattleResults'
 
 const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
-  const { user, updateUser } = useAuth()
+  const { user } = useAuth()
   const [battleRoom, setBattleRoom] = useState(null)
   const [rounds, setRounds] = useState([])
   const [votes, setVotes] = useState([])
@@ -47,15 +47,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const [showRoundHistory, setShowRoundHistory] = useState(false)
   const [showSideSelection, setShowSideSelection] = useState(false)
   const [selectedSide, setSelectedSide] = useState(null)
-  
-  // Use ref to store current user data that can be updated immediately
-  const currentUserRef = useRef(user)
-  
-  // Update ref whenever user changes
-  useEffect(() => {
-    currentUserRef.current = user
-    console.log('User ref updated:', user)
-  }, [user])
+  const [userSide, setUserSide] = useState(null) // Store user side directly
   
   // Random matching states
   const [matchingMode, setMatchingMode] = useState('manual') // 'manual' or 'random'
@@ -188,36 +180,31 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       setError(null)
       setShowCreateBattle(false)
 
-      // Force user refresh by calling /auth/me endpoint directly
-      let freshUserData = user
-      try {
-        const token = localStorage.getItem('access_token')
-        console.log('=== USER REFRESH ===')
-        console.log('Attempting to refresh user with token:', token ? 'exists' : 'missing')
-        console.log('Current user in state before refresh:', user)
-        
-        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/auth/me`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        })
-        
-        if (response.ok) {
-          freshUserData = await response.json()
-          console.log('Successfully refreshed user data:', freshUserData)
-          updateUser(freshUserData)
-          console.log('Updated user in auth context')
-        } else {
-          console.error('Failed to refresh user - status:', response.status)
-        }
-      } catch (err) {
-        console.error('Failed to refresh user data:', err)
-      }
-
       // Load battle room details (now includes user information)
       const battle = await battleService.getBattleRoom(roomId)
       setBattleRoom(battle)
+
+      // Determine user side by email comparison
+      if (battle.pro_user && battle.con_user && user) {
+        const userEmail = user.email?.toLowerCase()
+        const proEmail = battle.pro_user.email?.toLowerCase()
+        const conEmail = battle.con_user.email?.toLowerCase()
+        
+        console.log('=== DETERMINING USER SIDE ===')
+        console.log('User email:', userEmail)
+        console.log('Pro email:', proEmail)
+        console.log('Con email:', conEmail)
+        
+        if (userEmail === proEmail) {
+          setUserSide('pro')
+          console.log('User side determined: PRO')
+        } else if (userEmail === conEmail) {
+          setUserSide('con')
+          console.log('User side determined: CON')
+        } else {
+          console.log('User side could not be determined by email')
+        }
+      }
 
       // Load debate title
       if (battle.debate_id) {
@@ -233,8 +220,8 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       // Connect to WebSocket
       await connectToBattle(roomId)
 
-      // Load rounds and votes - pass fresh user data
-      await loadBattleDetails(roomId, freshUserData)
+      // Load rounds and votes
+      await loadBattleDetails(roomId)
 
     } catch (err) {
       setError('Failed to load battle room')
@@ -253,15 +240,6 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
 
     try {
       setMatchingError('')
-      
-      // Refresh current user data to ensure we have the correct user ID
-      try {
-        const freshUser = await authService.getCurrentUser()
-        updateUser(freshUser)
-        console.log('Refreshed user data before battle creation:', freshUser)
-      } catch (err) {
-        console.error('Failed to refresh user data:', err)
-      }
       
       if (matchingMode === 'manual') {
         // Validate debateId for manual battle as well
@@ -316,15 +294,6 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const startRandomMatching = async () => {
     setIsSearching(true)
     setMatchingError('')
-    
-    // Refresh current user data to ensure we have the correct user ID
-    try {
-      const freshUser = await authService.getCurrentUser()
-      updateUser(freshUser)
-      console.log('Refreshed user data before matchmaking:', freshUser)
-    } catch (err) {
-      console.error('Failed to refresh user data:', err)
-    }
     
     // Validate debateId before attempting matchmaking
     const parsedDebateId = debateId ? parseInt(debateId) : NaN
@@ -408,6 +377,28 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
           const battle = await battleService.getBattleRoom(battleId)
           setBattleRoom(battle)
           setShowCreateBattle(false)
+          
+          // Determine user side by email comparison
+          if (battle.pro_user && battle.con_user && user) {
+            const userEmail = user.email?.toLowerCase()
+            const proEmail = battle.pro_user.email?.toLowerCase()
+            const conEmail = battle.con_user.email?.toLowerCase()
+            
+            console.log('=== DETERMINING USER SIDE (MATCHMAKING) ===')
+            console.log('User email:', userEmail)
+            console.log('Pro email:', proEmail)
+            console.log('Con email:', conEmail)
+            
+            if (userEmail === proEmail) {
+              setUserSide('pro')
+              console.log('User side determined: PRO')
+            } else if (userEmail === conEmail) {
+              setUserSide('con')
+              console.log('User side determined: CON')
+            } else {
+              console.log('User side could not be determined by email')
+            }
+          }
           
           // Load debate title
           if (battle.debate_id) {
@@ -666,54 +657,9 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     }
   }
 
-  const getUserSide = (userData = currentUserRef.current) => {
-    if (!battleRoom || !userData) {
-      console.log('getUserSide: missing battleRoom or user', { battleRoom: !!battleRoom, user: !!userData })
-      return null
-    }
-    
-    // Convert both to numbers for comparison to handle string/number mismatches
-    const userId = Number(userData.id)
-    const proUserId = Number(battleRoom.pro_user_id)
-    const conUserId = Number(battleRoom.con_user_id)
-    
-    const side = userId === proUserId ? 'pro' : userId === conUserId ? 'con' : null
-    
-    console.log('getUserSide:', { 
-      userId: userData.id, 
-      userIdType: typeof userData.id,
-      userIdNumber: userId,
-      proUserId: battleRoom.pro_user_id,
-      proUserIdType: typeof battleRoom.pro_user_id,
-      proUserIdNumber: proUserId,
-      conUserId: battleRoom.con_user_id,
-      conUserIdType: typeof battleRoom.con_user_id,
-      conUserIdNumber: conUserId,
-      username: userData.username,
-      side,
-      battleRoomStatus: battleRoom.status,
-      comparison: {
-        userIdEqualsPro: userId === proUserId,
-        userIdEqualsCon: userId === conUserId
-      }
-    })
-    
-    // If side is null, try to determine from battle room user objects
-    if (!side && battleRoom.pro_user && battleRoom.con_user) {
-      const userEmail = userData.email?.toLowerCase()
-      const proEmail = battleRoom.pro_user.email?.toLowerCase()
-      const conEmail = battleRoom.con_user.email?.toLowerCase()
-      
-      if (userEmail === proEmail) {
-        console.log('getUserSide: Determined side by email match - PRO')
-        return 'pro'
-      } else if (userEmail === conEmail) {
-        console.log('getUserSide: Determined side by email match - CON')
-        return 'con'
-      }
-    }
-    
-    return side
+  const getUserSide = () => {
+    console.log('getUserSide: Returning stored userSide:', userSide)
+    return userSide
   }
 
   const getUserName = (userId) => {
