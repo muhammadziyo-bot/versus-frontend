@@ -9,7 +9,7 @@ import { useAuth } from '../contexts/AuthContext'
 import BattleResults from '../components/BattleResults'
 
 const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
-  const { user } = useAuth()
+  const { user, updateUser } = useAuth()
   const [battleRoom, setBattleRoom] = useState(null)
   const [rounds, setRounds] = useState([])
   const [votes, setVotes] = useState([])
@@ -601,6 +601,16 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       
     } catch (err) {
       console.error('Failed to load battle details:', err)
+    }
+  }
+
+  const loadDebateTitle = async (debateId) => {
+    try {
+      const debate = await debateService.getDebateById(debateId)
+      setDebateTitle(debate.title || 'Unknown Topic')
+    } catch (err) {
+      console.error('Failed to load debate title:', err)
+      setDebateTitle('Unknown Topic')
     }
   }
 
