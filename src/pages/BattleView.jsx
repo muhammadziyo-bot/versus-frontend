@@ -240,12 +240,18 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         const userResponse = await battleService.findUserByUsername(opponentUsername)
         const opponentId = userResponse.id
         
+        console.log('=== MANUAL BATTLE CREATION ===')
+        console.log('Current User ID:', user?.id, typeof user?.id)
+        console.log('Opponent ID:', opponentId, typeof opponentId)
+        console.log('==============================')
+        
         const battleData = {
           debate_id: parsedDebateId,
           opponent_id: opponentId
         }
         
         const battle = await battleService.createBattleRoom(battleData)
+        console.log('Created Battle Room:', battle)
         setBattleRoom(battle)
         setShowCreateBattle(false)
         
@@ -524,6 +530,16 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         battleService.getBattleVotes(battleId)
       ])
       
+      console.log('=== BATTLE DETAILS LOADED ===')
+      console.log('Battle Room:', battle)
+      console.log('Current User:', user)
+      console.log('User ID type:', typeof user?.id, user?.id)
+      console.log('Pro User ID type:', typeof battle?.pro_user_id, battle?.pro_user_id)
+      console.log('Con User ID type:', typeof battle?.con_user_id, battle?.con_user_id)
+      console.log('Pro User:', battle?.pro_user)
+      console.log('Con User:', battle?.con_user)
+      console.log('============================')
+      
       setBattleRoom(battle)
       setRounds(battleRounds)
       setVotes(battleVotes)
@@ -584,15 +600,33 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       console.log('getUserSide: missing battleRoom or user', { battleRoom: !!battleRoom, user: !!user })
       return null
     }
-    const side = user.id === battleRoom.pro_user_id ? 'pro' : user.id === battleRoom.con_user_id ? 'con' : null
+    
+    // Convert both to numbers for comparison to handle string/number mismatches
+    const userId = Number(user.id)
+    const proUserId = Number(battleRoom.pro_user_id)
+    const conUserId = Number(battleRoom.con_user_id)
+    
+    const side = userId === proUserId ? 'pro' : userId === conUserId ? 'con' : null
+    
     console.log('getUserSide:', { 
       userId: user.id, 
+      userIdType: typeof user.id,
+      userIdNumber: userId,
+      proUserId: battleRoom.pro_user_id,
+      proUserIdType: typeof battleRoom.pro_user_id,
+      proUserIdNumber: proUserId,
+      conUserId: battleRoom.con_user_id,
+      conUserIdType: typeof battleRoom.con_user_id,
+      conUserIdNumber: conUserId,
       username: user.username,
-      proUserId: battleRoom.pro_user_id, 
-      conUserId: battleRoom.con_user_id, 
       side,
-      battleRoomStatus: battleRoom.status
+      battleRoomStatus: battleRoom.status,
+      comparison: {
+        userIdEqualsPro: userId === proUserId,
+        userIdEqualsCon: userId === conUserId
+      }
     })
+    
     return side
   }
 
