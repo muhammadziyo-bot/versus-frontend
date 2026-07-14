@@ -179,6 +179,15 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       setError(null)
       setShowCreateBattle(false)
 
+      // Refresh current user data to ensure we have the correct user ID
+      try {
+        const freshUser = await authService.getCurrentUser()
+        updateUser(freshUser)
+        console.log('Refreshed user data:', freshUser)
+      } catch (err) {
+        console.error('Failed to refresh user data:', err)
+      }
+
       // Load battle room details (now includes user information)
       const battle = await battleService.getBattleRoom(roomId)
       setBattleRoom(battle)
@@ -217,6 +226,15 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
 
     try {
       setMatchingError('')
+      
+      // Refresh current user data to ensure we have the correct user ID
+      try {
+        const freshUser = await authService.getCurrentUser()
+        updateUser(freshUser)
+        console.log('Refreshed user data before battle creation:', freshUser)
+      } catch (err) {
+        console.error('Failed to refresh user data:', err)
+      }
       
       if (matchingMode === 'manual') {
         // Validate debateId for manual battle as well
@@ -271,6 +289,15 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const startRandomMatching = async () => {
     setIsSearching(true)
     setMatchingError('')
+    
+    // Refresh current user data to ensure we have the correct user ID
+    try {
+      const freshUser = await authService.getCurrentUser()
+      updateUser(freshUser)
+      console.log('Refreshed user data before matchmaking:', freshUser)
+    } catch (err) {
+      console.error('Failed to refresh user data:', err)
+    }
     
     // Validate debateId before attempting matchmaking
     const parsedDebateId = debateId ? parseInt(debateId) : NaN
