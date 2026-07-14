@@ -343,12 +343,25 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
           clearInterval(pollInterval)
           setIsSearching(false)
           
-          // Connect to the found battle
-          setBattleRoom(data.battle)
+          // Load the full battle room from database to get proper user assignments
+          const battleId = data.battle.battle_id || data.battle.id
+          const battle = await battleService.getBattleRoom(battleId)
+          setBattleRoom(battle)
           setShowCreateBattle(false)
           
-          await connectToBattle(data.battle.id)
-          await loadBattleDetails(data.battle.id)
+          // Load debate title
+          if (battle.debate_id) {
+            try {
+              const debate = await debateService.getDebateById(battle.debate_id)
+              setDebateTitle(debate.title || 'Unknown Topic')
+            } catch (err) {
+              console.error('Failed to load debate title:', err)
+              setDebateTitle('Unknown Topic')
+            }
+          }
+          
+          await connectToBattle(battleId)
+          await loadBattleDetails(battleId)
         }
       } catch (err) {
         console.error('Error polling match status:', err)
@@ -571,8 +584,15 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       console.log('getUserSide: missing battleRoom or user', { battleRoom: !!battleRoom, user: !!user })
       return null
     }
-    const side = user.id === battleRoom.pro_user_id ? 'pro' : 'con'
-    console.log('getUserSide:', { userId: user.id, proUserId: battleRoom.pro_user_id, conUserId: battleRoom.con_user_id, side })
+    const side = user.id === battleRoom.pro_user_id ? 'pro' : user.id === battleRoom.con_user_id ? 'con' : null
+    console.log('getUserSide:', { 
+      userId: user.id, 
+      username: user.username,
+      proUserId: battleRoom.pro_user_id, 
+      conUserId: battleRoom.con_user_id, 
+      side,
+      battleRoomStatus: battleRoom.status
+    })
     return side
   }
 
