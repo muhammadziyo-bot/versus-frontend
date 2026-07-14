@@ -615,8 +615,15 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   }
 
   const startBattle = () => {
+    console.log('=== STARTING BATTLE ===')
+    console.log('Battle Room:', battleRoom)
+    console.log('Battle Room ID:', battleRoom?.id)
+    console.log('Battle Status:', battleRoom?.status)
     if (battleRoom) {
       websocketService.startBattle(battleRoom.id)
+      console.log('Sent start battle request via WebSocket')
+    } else {
+      console.error('Cannot start battle: battleRoom is null')
     }
   }
 
@@ -690,6 +697,21 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         userIdEqualsCon: userId === conUserId
       }
     })
+    
+    // If side is null, try to determine from battle room user objects
+    if (!side && battleRoom.pro_user && battleRoom.con_user) {
+      const userEmail = userData.email?.toLowerCase()
+      const proEmail = battleRoom.pro_user.email?.toLowerCase()
+      const conEmail = battleRoom.con_user.email?.toLowerCase()
+      
+      if (userEmail === proEmail) {
+        console.log('getUserSide: Determined side by email match - PRO')
+        return 'pro'
+      } else if (userEmail === conEmail) {
+        console.log('getUserSide: Determined side by email match - CON')
+        return 'con'
+      }
+    }
     
     return side
   }
@@ -777,7 +799,8 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       userSide, 
       hasSubmitted, 
       proSubmitted: !!round.pro_argument,
-      canSubmit 
+      canSubmit,
+      roundDetails: round
     })
     
     return canSubmit
@@ -1181,6 +1204,33 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
               </p>
             </div>
             
+            <button
+              onClick={startBattle}
+              className="bg-green-500 text-white px-8 py-3 rounded-lg hover:bg-green-600 font-medium flex items-center justify-center mx-auto"
+            >
+              <Play className="w-5 h-5 mr-2" />
+              Start Battle
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Show Start Battle button even if status is active but rounds are waiting */}
+      {battleRoom.status === 'active' && getCurrentRound()?.status === 'waiting' && (
+        <div className={`rounded-lg shadow-md p-8 mb-6 ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'}`}>
+          <div className="text-center">
+            <h2 className="text-2xl font-bold mb-2 flex items-center justify-center">
+              <Sword className="w-6 h-6 mr-2" />
+              Battle Ready
+            </h2>
+            <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Both players are ready! Click to start the battle.
+            </p>
+            <div className={`mb-4 p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+              <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <strong>Topic:</strong> {debateTitle || 'Loading...'}
+              </p>
+            </div>
             <button
               onClick={startBattle}
               className="bg-green-500 text-white px-8 py-3 rounded-lg hover:bg-green-600 font-medium flex items-center justify-center mx-auto"
