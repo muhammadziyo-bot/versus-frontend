@@ -55,6 +55,9 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const messagesEndRef = useRef(null)
   const argumentRef = useRef(null)
   const timerRef = useRef(null)
+  const battleRoomRef = useRef(null)
+  // Keep ref in sync with state so closures always see the latest value
+  battleRoomRef.current = battleRoom
 
   useEffect(() => {
     if (battleRoomId) {
@@ -69,8 +72,8 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       // Leave matchmaking queue if we're searching
       cleanupMatchmaking()
 
-      if (battleRoom) {
-        websocketService.disconnectFromBattle(battleRoom.id)
+      if (battleRoomRef.current) {
+        websocketService.disconnectFromBattle(battleRoomRef.current.id)
       }
       
       // Clear timer
@@ -78,7 +81,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         clearInterval(timerRef.current)
       }
     }
-  }, [debateId, battleRoomId, isSearching])
+  }, [debateId, battleRoomId])
 
   // Timer effect - only start when battle is active AND rounds are active
   useEffect(() => {
@@ -118,8 +121,9 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         // Use sendBeacon for reliable cleanup during page unload
         const token = localStorage.getItem('access_token')
         if (token) {
+          const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
           navigator.sendBeacon(
-            'http://localhost:8000/api/matchmaking/leave',
+            `${apiBase}/api/matchmaking/leave`,
             new Blob(JSON.stringify({}), {
               headers: {
                 'Authorization': `Bearer ${token}`,
@@ -525,7 +529,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         break
         
       case 'message_history':
-        setMessages(data.data.messages || [])
+        setMessages((data.data.messages || []).filter(m => m.type === 'chat').map(m => m.data))
         break
         
       case 'chat':
@@ -540,9 +544,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
             : round
         ))
         // Refresh battle state to get updated round status
-        if (battleRoom) {
-          loadBattleDetails(battleRoom.id)
-        }
+        loadBattleDetails(battleRoomId)
         break
         
       case 'round_completed':
@@ -559,9 +561,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       case 'battle_started':
         setBattleRoom(prev => ({ ...prev, ...data.data }))
         // Refresh battle details to get updated round status
-        if (battleRoom) {
-          loadBattleDetails(battleRoom.id)
-        }
+        loadBattleDetails(data.data.battle_id)
         // Re-determine user side after battle starts
         if (data.data.pro_user_id && data.data.con_user_id && user?.id) {
           if (user.id === data.data.pro_user_id) {
