@@ -43,6 +43,10 @@ class DebateService {
     }
   }
 
+  async getDebateById(debateId) {
+    return this.getDebate(debateId);
+  }
+
   async createDebate(debateData) {
     try {
       const response = await api.post('/debates', debateData);

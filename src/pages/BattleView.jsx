@@ -184,26 +184,41 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       const battle = await battleService.getBattleRoom(roomId)
       setBattleRoom(battle)
 
-      // Determine user side by email comparison
-      if (battle.pro_user && battle.con_user && user) {
-        const userEmail = user.email?.toLowerCase()
-        const proEmail = battle.pro_user.email?.toLowerCase()
-        const conEmail = battle.con_user.email?.toLowerCase()
-        
+      console.log('=== LOAD EXISTING BATTLE ROOM ===')
+      console.log('Battle:', battle)
+      console.log('User:', user)
+      console.log('Battle pro_user:', battle.pro_user)
+      console.log('Battle con_user:', battle.con_user)
+
+      // Determine user side by user ID comparison (more reliable than email)
+      if (battle.pro_user_id && battle.con_user_id && user?.id) {
         console.log('=== DETERMINING USER SIDE ===')
-        console.log('User email:', userEmail)
-        console.log('Pro email:', proEmail)
-        console.log('Con email:', conEmail)
+        console.log('User ID:', user.id, typeof user.id)
+        console.log('Pro User ID:', battle.pro_user_id, typeof battle.pro_user_id)
+        console.log('Con User ID:', battle.con_user_id, typeof battle.con_user_id)
         
-        if (userEmail === proEmail) {
+        if (user.id === battle.pro_user_id) {
           setUserSide('pro')
           console.log('User side determined: PRO')
-        } else if (userEmail === conEmail) {
+        } else if (user.id === battle.con_user_id) {
           setUserSide('con')
           console.log('User side determined: CON')
         } else {
-          console.log('User side could not be determined by email')
+          console.log('User side could not be determined by ID')
+          console.log('Comparison results:', {
+            userIdEqualsPro: user.id === battle.pro_user_id,
+            userIdEqualsCon: user.id === battle.con_user_id,
+            userId: user.id,
+            proUserId: battle.pro_user_id,
+            conUserId: battle.con_user_id
+          })
         }
+      } else {
+        console.log('Cannot determine user side - missing data:', {
+          hasProUserId: !!battle.pro_user_id,
+          hasConUserId: !!battle.con_user_id,
+          hasUserId: !!user?.id
+        })
       }
 
       // Load debate title
@@ -378,25 +393,21 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
           setBattleRoom(battle)
           setShowCreateBattle(false)
           
-          // Determine user side by email comparison
-          if (battle.pro_user && battle.con_user && user) {
-            const userEmail = user.email?.toLowerCase()
-            const proEmail = battle.pro_user.email?.toLowerCase()
-            const conEmail = battle.con_user.email?.toLowerCase()
-            
+          // Determine user side by user ID comparison (more reliable than email)
+          if (battle.pro_user_id && battle.con_user_id && user?.id) {
             console.log('=== DETERMINING USER SIDE (MATCHMAKING) ===')
-            console.log('User email:', userEmail)
-            console.log('Pro email:', proEmail)
-            console.log('Con email:', conEmail)
+            console.log('User ID:', user.id, typeof user.id)
+            console.log('Pro User ID:', battle.pro_user_id, typeof battle.pro_user_id)
+            console.log('Con User ID:', battle.con_user_id, typeof battle.con_user_id)
             
-            if (userEmail === proEmail) {
+            if (user.id === battle.pro_user_id) {
               setUserSide('pro')
               console.log('User side determined: PRO')
-            } else if (userEmail === conEmail) {
+            } else if (user.id === battle.con_user_id) {
               setUserSide('con')
               console.log('User side determined: CON')
             } else {
-              console.log('User side could not be determined by email')
+              console.log('User side could not be determined by ID')
             }
           }
           
@@ -502,6 +513,14 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         if (data.data.battle.debate_id && !debateTitle) {
           loadDebateTitle(data.data.battle.debate_id)
         }
+        // Re-determine user side when battle state updates
+        if (data.data.battle.pro_user_id && data.data.battle.con_user_id && user?.id) {
+          if (user.id === data.data.battle.pro_user_id) {
+            setUserSide('pro')
+          } else if (user.id === data.data.battle.con_user_id) {
+            setUserSide('con')
+          }
+        }
         console.log('Battle state updated:', data.data.battle)
         break
         
@@ -543,6 +562,14 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         if (battleRoom) {
           loadBattleDetails(battleRoom.id)
         }
+        // Re-determine user side after battle starts
+        if (data.data.pro_user_id && data.data.con_user_id && user?.id) {
+          if (user.id === data.data.pro_user_id) {
+            setUserSide('pro')
+          } else if (user.id === data.data.con_user_id) {
+            setUserSide('con')
+          }
+        }
         // Hide side selection when battle starts
         setShowSideSelection(false)
         break
@@ -560,6 +587,11 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       case 'error':
         setError(data.data.message)
         console.error('WebSocket error:', data.data.message)
+        break
+        
+      case 'user_joined':
+        console.log('User joined battle:', data.data)
+        // Just log it, no action needed
         break
         
       default:
@@ -589,6 +621,17 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       setRounds(battleRounds)
       setVotes(battleVotes)
       setCurrentRound(battle.current_round)
+      
+      // Re-determine user side after loading battle details
+      if (battle.pro_user_id && battle.con_user_id && userData?.id) {
+        if (userData.id === battle.pro_user_id) {
+          setUserSide('pro')
+          console.log('User side determined in loadBattleDetails: PRO')
+        } else if (userData.id === battle.con_user_id) {
+          setUserSide('con')
+          console.log('User side determined in loadBattleDetails: CON')
+        }
+      }
       
     } catch (err) {
       console.error('Failed to load battle details:', err)
