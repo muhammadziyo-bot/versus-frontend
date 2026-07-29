@@ -543,8 +543,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
             ? { ...round, [`${data.data.side}_argument`]: data.data.argument }
             : round
         ))
-        // Refresh battle state to get updated round status
-        loadBattleDetails(battleRoomId)
+        // Round state is updated optimistically above — no fetch needed
         break
         
       case 'round_completed':
