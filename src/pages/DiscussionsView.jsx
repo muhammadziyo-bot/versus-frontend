@@ -22,7 +22,7 @@ const getAvatarIcon = (avatar) => {
   }
 }
 
-function DiscussionsView({ discussions, discussionStats, dataLoading, darkMode, setDarkMode, user, isAuthenticated, onShowLogin, refreshData, onDiscussionSelect, onProfileSelect }) {
+function DiscussionsView({ discussions, setDiscussions, discussionStats, dataLoading, darkMode, setDarkMode, user, isAuthenticated, onShowLogin, refreshData, onDiscussionSelect, onProfileSelect }) {
   const [sortBy, setSortBy] = useState('hot') // hot, new, top, controversial
   const [showNewDiscussionModal, setShowNewDiscussionModal] = useState(false)
   const [userBookmarks, setUserBookmarks] = useState(new Set())
@@ -161,15 +161,45 @@ function DiscussionsView({ discussions, discussionStats, dataLoading, darkMode, 
       return
     }
 
+    const prevDiscussions = discussions
+
+    // Optimistic: update the specific discussion immediately
+    setDiscussions(prev => prev.map(d => {
+      if (d.id !== discussionId) return d
+      const prevVote = d.user_vote
+      const isTogglingOff = prevVote === voteType
+      const upvotes = d.upvotes || 0
+      const downvotes = d.downvotes || 0
+
+      if (isTogglingOff) {
+        return {
+          ...d,
+          user_vote: null,
+          upvotes: Math.max(0, upvotes + (voteType === 'up' ? -1 : 0)),
+          downvotes: Math.max(0, downvotes + (voteType === 'down' ? -1 : 0)),
+        }
+      }
+
+      return {
+        ...d,
+        user_vote: voteType,
+        upvotes: Math.max(0, upvotes + (voteType === 'up' ? 1 : 0) + (prevVote === 'up' ? -1 : 0)),
+        downvotes: Math.max(0, downvotes + (voteType === 'down' ? 1 : 0) + (prevVote === 'down' ? -1 : 0)),
+      }
+    }))
+
     try {
       // Call API to toggle vote
-      await discussionService.voteDiscussion(discussionId, voteType)
-      
-      // Refresh discussions from backend to get accurate counts and user votes
-      if (refreshData) {
-        refreshData()
-      }
+      const result = await discussionService.voteDiscussion(discussionId, voteType)
+      // Reconcile with server's authoritative counts
+      setDiscussions(prev => prev.map(d =>
+        d.id === discussionId
+          ? { ...d, upvotes: result.upvotes, downvotes: result.downvotes, user_vote: result.user_vote }
+          : d
+      ))
     } catch (error) {
+      // Rollback on failure
+      setDiscussions(prevDiscussions)
       console.error('Failed to vote on discussion:', error)
     }
   }

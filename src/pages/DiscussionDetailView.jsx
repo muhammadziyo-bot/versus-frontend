@@ -50,16 +50,30 @@ function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user,
 
     if (!newComment.trim()) return
 
+    const commentText = newComment
+    setNewComment('')
     setIsPostingComment(true)
 
+    // Optimistic: append a temporary comment immediately
+    const tempId = `temp-${Date.now()}`
+    const tempComment = {
+      id: tempId,
+      content: commentText,
+      author: user?.username || user?.full_name || 'You',
+      author_id: user?.id,
+      upvotes: 0,
+      downvotes: 0,
+      user_vote: null,
+      created_at: new Date().toISOString(),
+      replies: [],
+    }
+    setComments(prev => [tempComment, ...prev])
+
     try {
-      await discussionService.addComment(id, newComment)
-      setNewComment('')
-      
-      // Refresh comments
-      const discussionDetail = await discussionService.getDiscussionById(id)
-      setComments(discussionDetail.comments || [])
+      const realComment = await discussionService.addComment(id, commentText)
+      setComments(prev => prev.map(c => c.id === tempId ? realComment : c))
     } catch (error) {
+      setComments(prev => prev.filter(c => c.id !== tempId))
       console.error('Failed to post comment:', error)
     } finally {
       setIsPostingComment(false)
@@ -74,15 +88,39 @@ function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user,
 
     if (!replyContent.trim()) return
 
+    const replyText = replyContent
+    setReplyContent('')
+    setReplyToComment(null)
+
+    // Optimistic: append a temporary reply under the parent comment
+    const tempId = `temp-${Date.now()}`
+    const tempReply = {
+      id: tempId,
+      content: replyText,
+      author: user?.username || user?.full_name || 'You',
+      author_id: user?.id,
+      upvotes: 0,
+      downvotes: 0,
+      user_vote: null,
+      created_at: new Date().toISOString(),
+      replies: [],
+    }
+    setComments(prev => updateCommentInTree(prev, commentId, (c) => ({
+      ...c,
+      replies: [...(c.replies || []), tempReply],
+    })))
+
     try {
-      await discussionService.addComment(id, replyContent, commentId)
-      setReplyContent('')
-      setReplyToComment(null)
-      
-      // Refresh comments
-      const discussionDetail = await discussionService.getDiscussionById(id)
-      setComments(discussionDetail.comments || [])
+      const realReply = await discussionService.addComment(id, replyText, commentId)
+      setComments(prev => updateCommentInTree(prev, commentId, (c) => ({
+        ...c,
+        replies: (c.replies || []).map(r => r.id === tempId ? realReply : r),
+      })))
     } catch (error) {
+      setComments(prev => updateCommentInTree(prev, commentId, (c) => ({
+        ...c,
+        replies: (c.replies || []).filter(r => r.id !== tempId),
+      })))
       console.error('Failed to post reply:', error)
     }
   }
@@ -93,17 +131,32 @@ function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user,
       return
     }
 
+    const prevComments = comments
+    let optimisticVoteType = 'up'
+
+    // Optimistic: flip the like state immediately
+    setComments(prev => updateCommentInTree(prev, commentId, (c) => {
+      const isLiked = c.user_vote === 'up'
+      optimisticVoteType = isLiked ? 'down' : 'up'
+      return {
+        ...c,
+        user_vote: isLiked ? null : 'up',
+        upvotes: Math.max(0, (c.upvotes || 0) + (isLiked ? -1 : 1)),
+      }
+    }))
+
     try {
-      // If already liked, unlike by voting 'down' to remove the vote
-      const comment = comments.find(c => c.id === commentId)
-      const actualVoteType = comment?.user_vote === 'up' ? 'down' : 'up'
-      
-      await discussionService.voteComment(commentId, actualVoteType)
-      
-      // Refresh comments to get updated vote state
-      const discussionDetail = await discussionService.getDiscussionById(id)
-      setComments(discussionDetail.comments || [])
+      const result = await discussionService.voteComment(commentId, optimisticVoteType)
+      // Reconcile with server's authoritative counts
+      setComments(prev => updateCommentInTree(prev, commentId, (c) => ({
+        ...c,
+        upvotes: result.upvotes,
+        downvotes: result.downvotes,
+        user_vote: result.user_vote,
+      })))
     } catch (error) {
+      // Rollback to previous state on failure
+      setComments(prevComments)
       console.error('Failed to vote on comment:', error)
     }
   }
@@ -114,11 +167,48 @@ function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user,
       return
     }
 
+    const prevDiscussion = currentDiscussion
+    const prevVote = currentDiscussion?.user_vote
+
+    // Optimistic: flip the vote state immediately
+    setCurrentDiscussion(prev => {
+      const isTogglingOff = prev?.user_vote === voteType
+      const upvotes = prev?.upvotes || 0
+      const downvotes = prev?.downvotes || 0
+
+      if (isTogglingOff) {
+        return {
+          ...prev,
+          user_vote: null,
+          upvotes: Math.max(0, upvotes + (voteType === 'up' ? -1 : 0)),
+          downvotes: Math.max(0, downvotes + (voteType === 'down' ? -1 : 0)),
+        }
+      }
+
+      if (prevVote === voteType) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        user_vote: voteType,
+        upvotes: Math.max(0, upvotes + (voteType === 'up' ? 1 : 0) + (prevVote === 'up' ? -1 : 0)),
+        downvotes: Math.max(0, downvotes + (voteType === 'down' ? 1 : 0) + (prevVote === 'down' ? -1 : 0)),
+      }
+    })
+
     try {
-      // The API returns the updated discussion with correct vote counts
-      const updatedDiscussion = await discussionService.voteDiscussion(id, voteType)
-      setCurrentDiscussion(updatedDiscussion)
+      const result = await discussionService.voteDiscussion(id, voteType)
+      // Reconcile with server's authoritative counts
+      setCurrentDiscussion(prev => ({
+        ...prev,
+        upvotes: result.upvotes,
+        downvotes: result.downvotes,
+        user_vote: result.user_vote,
+      }))
     } catch (error) {
+      // Rollback on failure
+      setCurrentDiscussion(prevDiscussion)
       console.error('Failed to vote on discussion:', error)
     }
   }
@@ -129,12 +219,12 @@ function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user,
       return
     }
 
+    setCurrentDiscussion(prev => ({ ...prev, is_bookmarked: !prev?.is_bookmarked }))
     try {
       await discussionService.bookmarkDiscussion(id)
-      // Refresh discussion data
-      const discussionDetail = await discussionService.getDiscussionById(id)
-      setCurrentDiscussion(discussionDetail)
     } catch (error) {
+      // Rollback on failure
+      setCurrentDiscussion(prev => ({ ...prev, is_bookmarked: !prev?.is_bookmarked }))
       console.error('Failed to bookmark discussion:', error)
     }
   }
@@ -334,9 +424,9 @@ function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user,
                 </button>
                 <button 
                   onClick={handleBookmark}
-                  className={`flex items-center space-x-1 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                  className={`flex items-center space-x-1 ${currentDiscussion?.is_bookmarked ? 'text-purple-500' : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}
                 >
-                  <Bookmark className="w-5 h-5" />
+                  <Bookmark className="w-5 h-5" fill={currentDiscussion?.is_bookmarked ? 'currentColor' : 'none'} />
                 </button>
               </div>
             </div>
@@ -359,6 +449,7 @@ function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user,
                       expandedComments={expandedComments}
                       toggleCommentExpansion={toggleCommentExpansion}
                       replyToComment={replyToComment}
+                      setReplyToComment={setReplyToComment}
                       replyContent={replyContent}
                       setReplyContent={setReplyContent}
                       handlePostReply={handlePostReply}
@@ -418,8 +509,21 @@ function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user,
   )
 }
 
+// Recursively update a comment (and its nested replies) by id
+function updateCommentInTree(comments, commentId, updater) {
+  return comments.map(c => {
+    if (c.id === commentId) {
+      return updater(c)
+    }
+    if (c.replies && c.replies.length > 0) {
+      return { ...c, replies: updateCommentInTree(c.replies, commentId, updater) }
+    }
+    return c
+  })
+}
+
 // Comment Component for nested comments
-function CommentComponent({ comment, darkMode, onVote, onReply, expandedComments, toggleCommentExpansion, replyToComment, replyContent, setReplyContent, handlePostReply, isAuthenticated, onShowLogin, onProfileSelect }) {
+function CommentComponent({ comment, darkMode, onVote, onReply, expandedComments, toggleCommentExpansion, replyToComment, setReplyToComment, replyContent, setReplyContent, handlePostReply, isAuthenticated, onShowLogin, onProfileSelect }) {
   const isExpanded = expandedComments.has(comment.id)
   const hasReplies = comment.replies && comment.replies.length > 0
   const isReplying = replyToComment === comment.id
@@ -533,6 +637,7 @@ function CommentComponent({ comment, darkMode, onVote, onReply, expandedComments
                   expandedComments={expandedComments}
                   toggleCommentExpansion={toggleCommentExpansion}
                   replyToComment={replyToComment}
+                  setReplyToComment={setReplyToComment}
                   replyContent={replyContent}
                   setReplyContent={setReplyContent}
                   handlePostReply={handlePostReply}

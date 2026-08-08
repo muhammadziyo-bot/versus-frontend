@@ -401,6 +401,7 @@ function AppContent() {
           <Layout darkMode={darkMode} setDarkMode={setDarkMode} currentView={currentView}>
             <DiscussionsView 
               discussions={discussions} 
+              setDiscussions={setDiscussions}
               discussionStats={discussionStats}
               dataLoading={dataLoading}
               darkMode={darkMode} 
