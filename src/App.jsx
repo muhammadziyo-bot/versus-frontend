@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import TopicCard from './components/TopicCard'
 import LoginModal from './components/LoginModal'
+import MotivationalQuote from './components/MotivationalQuote'
 import ClubsView from './pages/ClubsView'
 import ClubDetailView from './pages/ClubDetailView'
 import DebatersView from './pages/DebatersView'
@@ -305,6 +306,7 @@ function AppContent() {
                     Structured debates on today's most pressing topics. Choose your side, make your case.
                   </p>
                 </div>
+                <MotivationalQuote darkMode={darkMode} />
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
                   <div className={`rounded-lg p-6 border ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'} transition-colors duration-300`}>
                     <div className="flex items-center space-x-3 mb-2">

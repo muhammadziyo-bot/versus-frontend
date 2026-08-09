@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { MessageSquare, Users, TrendingUp, Settings, HelpCircle, Target, Pin, Clock, Bolt, Star, Gem, Reply, MoreHorizontal, Share, Bookmark, Flag, ThumbsUp, ThumbsDown } from 'lucide-react'
 import Header from '../components/Header'
+import MotivationalQuote from '../components/MotivationalQuote'
 import discussionService from '../services/discussionService'
 
 const getAvatarIcon = (avatar) => {
@@ -249,6 +250,8 @@ function DiscussionsView({ discussions, setDiscussions, discussionStats, dataLoa
               Join discussions on important topics and share your insights with the community
             </p>
           </div>
+
+          <MotivationalQuote darkMode={darkMode} />
 
         {/* Stats Section */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
