@@ -300,13 +300,15 @@ function AppContent() {
                 )}
               </Header>
               <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <div className="text-center mb-12">
-                  <h2 className="text-4xl font-bold mb-4">The Digital Arena</h2>
-                  <p className={`text-xl ${darkMode ? 'text-gray-400' : 'text-gray-600'} max-w-2xl mx-auto`}>
-                    Structured debates on today's most pressing topics. Choose your side, make your case.
-                  </p>
+                <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-12">
+                  <div className="text-center md:text-left max-w-xl">
+                    <h2 className="text-4xl md:text-5xl font-bold mb-3">The Digital Arena</h2>
+                    <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Structured debates on today's most pressing topics. Choose your side, make your case.
+                    </p>
+                  </div>
+                  <MotivationalQuote darkMode={darkMode} variant="inline" />
                 </div>
-                <MotivationalQuote darkMode={darkMode} />
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
                   <div className={`rounded-lg p-6 border ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'} transition-colors duration-300`}>
                     <div className="flex items-center space-x-3 mb-2">

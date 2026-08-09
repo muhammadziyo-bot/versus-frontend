@@ -1,6 +1,21 @@
 import { Quote } from 'lucide-react'
 
-function MotivationalQuote({ darkMode }) {
+function MotivationalQuote({ darkMode, variant = 'centered' }) {
+  if (variant === 'inline') {
+    return (
+      <div className={`max-w-md w-full px-6 py-6 rounded-xl border ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'} transition-colors duration-300`}>
+        <Quote className="w-5 h-5 mb-2 text-electric-blue" />
+        <p className={`italic font-serif text-base md:text-lg leading-relaxed ${darkMode ? 'text-off-white' : 'text-gray-800'}`}>
+          &ldquo;No matter what anybody tells you, words and ideas can change the world.&rdquo;
+        </p>
+        <div className={`mt-3 w-12 h-px ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
+        <p className={`mt-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          &mdash; John Keating, <span className="italic">Dead Poets Society</span> (1989)
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="flex justify-center mb-10">
       <div className={`relative max-w-2xl w-full px-6 py-6 text-center rounded-xl border ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'} transition-colors duration-300`}>
