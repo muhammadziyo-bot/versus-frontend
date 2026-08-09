@@ -242,16 +242,17 @@ function DiscussionsView({ discussions, setDiscussions, discussionStats, dataLoa
         
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Hero Section */}
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold mb-4">
-              Engage in thoughtful conversations and explore diverse perspectives
-            </h2>
-            <p className={`text-xl ${darkMode ? 'text-gray-400' : 'text-gray-600'} max-w-2xl mx-auto`}>
-              Join discussions on important topics and share your insights with the community
-            </p>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-12">
+            <div className="text-center md:text-left max-w-xl">
+              <h2 className="text-4xl md:text-5xl font-bold mb-3">
+                Engage in thoughtful conversations and explore diverse perspectives
+              </h2>
+              <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Join discussions on important topics and share your insights with the community
+              </p>
+            </div>
+            <MotivationalQuote darkMode={darkMode} variant="inline" />
           </div>
-
-          <MotivationalQuote darkMode={darkMode} />
 
         {/* Stats Section */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
