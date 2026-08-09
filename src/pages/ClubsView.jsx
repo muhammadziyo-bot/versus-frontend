@@ -1,14 +1,16 @@
-import { useState } from 'react'
-import { Shield, Plus, Bot, GraduationCap, Scale, Globe, Microscope, Building2, Palette, Trophy, AlertCircle } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Shield, Plus, Bot, GraduationCap, Scale, Globe, Microscope, Building2, Palette, Trophy, AlertCircle, Search } from 'lucide-react'
 import ClubCard from '../components/ClubCard'
 import Header from '../components/Header'
 import clubService from '../services/clubService'
 
-function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, dataLoading, refreshData, user, isAuthenticated, onShowLogin, onProfileSelect }) {
+function ClubsView({ clubs, setClubs, onClubSelect, darkMode, setDarkMode, getClubBadge, refreshData, user, isAuthenticated, onShowLogin, onProfileSelect }) {
   const [renderError, setRenderError] = useState(null)
   const [selectedCategory, setSelectedCategory] = useState('All')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [sortBy, setSortBy] = useState('newest')
   const [showCreateModal, setShowCreateModal] = useState(false)
-  
+
   // Club creation form state
   const [clubName, setClubName] = useState('')
   const [clubDescription, setClubDescription] = useState('')
@@ -17,7 +19,7 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState(null)
 
-  const categories = ['All', 'Technology', 'Education', 'Social Policy', 'Environment']
+  const categories = ['All', 'Technology', 'Education', 'Social Policy', 'Environment', 'Science', 'Politics', 'Arts', 'Sports']
   const categoryOptions = ['Technology', 'Education', 'Social Policy', 'Environment', 'Science', 'Politics', 'Arts', 'Sports']
   const badgeOptions = [
     { id: 'bot', icon: Bot, label: 'Technology' },
@@ -29,10 +31,38 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
     { id: 'palette', icon: Palette, label: 'Arts' },
     { id: 'trophy', icon: Trophy, label: 'Sports' }
   ]
-  
-  const filteredClubs = selectedCategory === 'All' 
-    ? (clubs || [])
-    : (clubs || []).filter(club => club.category === selectedCategory)
+
+  const filteredClubs = useMemo(() => {
+    let result = clubs || []
+
+    // Category filter
+    if (selectedCategory !== 'All') {
+      result = result.filter(club => club.category === selectedCategory)
+    }
+
+    // Search filter
+    const term = searchTerm.trim().toLowerCase()
+    if (term) {
+      result = result.filter(club =>
+        (club.name || '').toLowerCase().includes(term) ||
+        (club.description || '').toLowerCase().includes(term) ||
+        (club.category || '').toLowerCase().includes(term) ||
+        (club.founder || '').toLowerCase().includes(term)
+      )
+    }
+
+    // Sort
+    const sorted = [...result]
+    if (sortBy === 'members') {
+      sorted.sort((a, b) => (b.member_count || 0) - (a.member_count || 0))
+    } else if (sortBy === 'oldest') {
+      sorted.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+    } else {
+      sorted.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+    }
+
+    return sorted
+  }, [clubs, selectedCategory, searchTerm, sortBy])
 
   const handleCreateClub = async () => {
     if (!isAuthenticated) {
@@ -49,12 +79,24 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
       setCreating(true)
       setError(null)
 
-      await clubService.createClub({
+      const created = await clubService.createClub({
         name: clubName,
         description: clubDescription,
         category: clubCategory,
         badge: clubBadge
       })
+
+      // Optimistically append the new club
+      if (setClubs) {
+        const formatted = {
+          ...created,
+          member_count: 1,
+          active_battles: 0,
+          is_member: true,
+          founder: user?.username || 'You',
+        }
+        setClubs(prev => [formatted, ...(prev || [])])
+      }
 
       // Reset form and close modal
       setClubName('')
@@ -62,11 +104,6 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
       setClubCategory('Technology')
       setClubBadge('bot')
       setShowCreateModal(false)
-
-      // Refresh clubs list
-      if (refreshData) {
-        refreshData()
-      }
     } catch (err) {
       setError(err.detail || 'Failed to create club')
       console.error('Error creating club:', err)
@@ -83,7 +120,7 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
               <AlertCircle className="w-5 h-5" />
               <span>Error loading clubs: {renderError}</span>
             </div>
-            <button 
+            <button
               onClick={() => {
                 setRenderError(null)
                 if (refreshData) refreshData()
@@ -94,12 +131,12 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
             </button>
           </div>
         )}
-        
-        <Header 
-          title="Debate Clubs" 
+
+        <Header
+          title="Debate Clubs"
           icon={Shield}
-          darkMode={darkMode} 
-          setDarkMode={setDarkMode} 
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
           user={user}
           isAuthenticated={isAuthenticated}
           onShowLogin={onShowLogin}
@@ -117,7 +154,7 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Hero Section */}
-          <div className="text-center mb-12">
+          <div className="text-center mb-8">
             <h2 className="text-4xl font-bold mb-4">
               Join a Debate Club
             </h2>
@@ -127,7 +164,7 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
           </div>
 
           {/* Stats Section */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className={`rounded-lg p-6 border ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'} transition-colors duration-300`}>
               <div className="flex items-center space-x-3 mb-2">
                 <i className="fas fa-users w-6 h-6 text-electric-blue flex items-center justify-center"></i>
@@ -151,9 +188,33 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
             </div>
           </div>
 
-          {/* Category Filter */}
-          <div className="mb-8">
-            <div className="flex flex-wrap gap-2 justify-center">
+          {/* Search + Sort + Category Filter */}
+          <div className="mb-8 space-y-4">
+            {/* Search bar */}
+            <div className="flex items-center justify-between gap-4">
+              <div className={`flex items-center flex-1 max-w-md rounded-lg border px-3 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                <Search className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search clubs by name, topic, or founder..."
+                  className={`w-full p-3 bg-transparent outline-none ${darkMode ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'}`}
+                />
+              </div>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className={`px-3 py-3 rounded-lg border outline-none ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}
+              >
+                <option value="newest">Newest</option>
+                <option value="members">Most Members</option>
+                <option value="oldest">Oldest</option>
+              </select>
+            </div>
+
+            {/* Category filter */}
+            <div className="flex flex-wrap gap-2">
               {categories.map((category) => (
                 <button
                   key={category}
@@ -161,8 +222,8 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
                   className={`px-4 py-2 rounded-lg transition-colors ${
                     selectedCategory === category
                       ? 'bg-electric-blue text-white'
-                      : darkMode 
-                        ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' 
+                      : darkMode
+                        ? 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
@@ -175,15 +236,18 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
           {/* Clubs Grid */}
           <div className="mb-8">
             <h3 className="text-2xl font-bold mb-6">
-              {selectedCategory === 'All' ? 'All Clubs' : `${selectedCategory} Clubs`}
+              {searchTerm ? `Results for "${searchTerm}"` : selectedCategory === 'All' ? 'All Clubs' : `${selectedCategory} Clubs`}
+              <span className={`ml-2 text-base font-normal ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                ({filteredClubs.length})
+              </span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredClubs.map((club) => {
                 try {
                   return (
-                    <ClubCard 
-                      key={club.id} 
-                      club={club} 
+                    <ClubCard
+                      key={club.id}
+                      club={club}
                       onSelect={() => onClubSelect(club)}
                       darkMode={darkMode}
                       getClubBadge={getClubBadge}
@@ -203,7 +267,9 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
               <Shield className={`w-16 h-16 mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
               <h3 className="text-xl font-semibold mb-2">No clubs found</h3>
               <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                No clubs available in the {selectedCategory} category yet.
+                {searchTerm
+                  ? `No clubs match "${searchTerm}". Try a different search.`
+                  : `No clubs available in the ${selectedCategory} category yet.`}
               </p>
             </div>
           )}
@@ -214,7 +280,7 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className={`rounded-lg p-6 max-w-md w-full mx-4 ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'}`}>
               <h3 className="text-xl font-semibold mb-4">Create New Club</h3>
-              
+
               {error && (
                 <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
                   {error}
@@ -232,8 +298,8 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
                     onChange={(e) => setClubName(e.target.value)}
                     placeholder="Enter club name"
                     className={`w-full p-3 border rounded-lg ${
-                      darkMode 
-                        ? 'bg-gray-900 border-gray-700 text-off-white' 
+                      darkMode
+                        ? 'bg-gray-900 border-gray-700 text-off-white'
                         : 'bg-gray-50 border-gray-300 text-gray-900'
                     }`}
                   />
@@ -249,8 +315,8 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
                     onChange={(e) => setClubDescription(e.target.value)}
                     placeholder="Describe your club's purpose"
                     className={`w-full p-3 border rounded-lg resize-none ${
-                      darkMode 
-                        ? 'bg-gray-900 border-gray-700 text-off-white' 
+                      darkMode
+                        ? 'bg-gray-900 border-gray-700 text-off-white'
                         : 'bg-gray-50 border-gray-300 text-gray-900'
                     }`}
                   />
@@ -264,8 +330,8 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
                     value={clubCategory}
                     onChange={(e) => setClubCategory(e.target.value)}
                     className={`w-full p-3 border rounded-lg ${
-                      darkMode 
-                        ? 'bg-gray-900 border-gray-700 text-off-white' 
+                      darkMode
+                        ? 'bg-gray-900 border-gray-700 text-off-white'
                         : 'bg-gray-50 border-gray-300 text-gray-900'
                     }`}
                   >
@@ -312,8 +378,8 @@ function ClubsView({ clubs, onClubSelect, darkMode, setDarkMode, getClubBadge, d
                     setClubDescription('')
                   }}
                   className={`px-4 py-2 rounded-lg transition-colors ${
-                    darkMode 
-                      ? 'border-gray-700 text-gray-300 hover:bg-gray-800' 
+                    darkMode
+                      ? 'border-gray-700 text-gray-300 hover:bg-gray-800'
                       : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
                 >

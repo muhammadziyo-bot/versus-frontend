@@ -28,9 +28,62 @@ class ClubService {
   async getClubs(skip = 0, limit = 100) {
     try {
       const response = await api.get(`/clubs?skip=${skip}&limit=${limit}`);
-      return response.data;
+      return response.data.items || response.data;
     } catch (error) {
       throw error.response?.data || { detail: 'Failed to fetch clubs' };
+    }
+  }
+
+  async searchClubs(params = {}) {
+    try {
+      const { q = '', category = '', sortBy = 'newest', skip = 0, limit = 100 } = params;
+      const query = new URLSearchParams({
+        q,
+        category,
+        sort_by: sortBy,
+        skip,
+        limit,
+      });
+      const response = await api.get(`/clubs/search?${query}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to search clubs' };
+    }
+  }
+
+  async getMyClubs() {
+    try {
+      const response = await api.get('/clubs/my');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to fetch my clubs' };
+    }
+  }
+
+  async updateClub(clubId, updateData) {
+    try {
+      const response = await api.patch(`/clubs/${clubId}`, updateData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to update club' };
+    }
+  }
+
+  async deleteClub(clubId) {
+    try {
+      const response = await api.delete(`/clubs/${clubId}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to delete club' };
+    }
+  }
+
+  async voteClubDiscussion(clubId, discussionId, voteType) {
+    try {
+      const response = await api.post(`/clubs/${clubId}/discussions/${discussionId}/vote`, { vote_type: voteType });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to vote on discussion' };
     }
   }
 

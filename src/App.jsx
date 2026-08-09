@@ -437,6 +437,7 @@ function AppContent() {
           <Layout darkMode={darkMode} setDarkMode={setDarkMode} currentView={currentView}>
             <ClubsView 
               clubs={clubs} 
+              setClubs={setClubs}
               onClubSelect={handleClubSelect} 
               darkMode={darkMode} 
               setDarkMode={setDarkMode}
@@ -464,6 +465,7 @@ function AppContent() {
               isAuthenticated={isAuthenticated} 
               onShowLogin={() => setShowLoginModal(true)} 
               onProfileSelect={handleProfileSelect} 
+              setClubs={setClubs}
             />
           </Layout>
         } />
