@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Settings, User, Bell, Shield, Globe, Send, MessageCircle } from 'lucide-react'
 import Header from '../components/Header'
 import userService from '../services/userService'
-import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
 
 function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, onProfileSelect }) {
@@ -31,7 +30,7 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(false)
+  const [success, setSuccess] = useState('')
   
   // Password change state
   const [showPasswordModal, setShowPasswordModal] = useState(false)
@@ -82,7 +81,7 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
     try {
       setSaving(true)
       setError(null)
-      setSuccess(false)
+      setSuccess('')
       
       // Update profile
       await userService.updateProfile({
@@ -99,8 +98,8 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
         privacy: privacy,
       })
       
-      setSuccess(true)
-      setTimeout(() => setSuccess(false), 3000)
+      setSuccess('Settings saved successfully!')
+      setTimeout(() => setSuccess(''), 3000)
     } catch (err) {
       setError('Failed to save changes')
       console.error('Error saving changes:', err)
@@ -114,7 +113,6 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
       setLinkingTelegram(true)
       setError(null)
       
-      const token = localStorage.getItem('access_token')
       const payload = {}
       
       if (linkMethod === 'chat_id') {
@@ -153,16 +151,13 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
         payload.username = telegramUsername
       }
       
-      await axios.post('http://localhost:8000/api/users/telegram/link', 
-        payload,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      await userService.linkTelegram(payload)
       
       setIsTelegramLinked(true)
       setSuccess('Telegram account linked successfully!')
-      setTimeout(() => setSuccess(false), 3000)
+      setTimeout(() => setSuccess(''), 3000)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to link Telegram account')
+      setError(err.response?.data?.detail || err.detail || 'Failed to link Telegram account')
     } finally {
       setLinkingTelegram(false)
     }
@@ -173,19 +168,16 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
       setLinkingTelegram(true)
       setError(null)
       
-      const token = localStorage.getItem('access_token')
-      await axios.delete('http://localhost:8000/api/users/telegram/unlink',
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      await userService.unlinkTelegram()
       
       setIsTelegramLinked(false)
       setTelegramChatId('')
       setTelegramUsername('')
       setLinkingToken('')
       setSuccess('Telegram account unlinked successfully')
-      setTimeout(() => setSuccess(false), 3000)
+      setTimeout(() => setSuccess(''), 3000)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to unlink Telegram account')
+      setError(err.response?.data?.detail || err.detail || 'Failed to unlink Telegram account')
     } finally {
       setLinkingTelegram(false)
     }
@@ -202,8 +194,28 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
       return
     }
     
-    if (newPassword.length < 6) {
-      setError('New password must be at least 6 characters')
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters')
+      return
+    }
+    
+    if (!/[A-Z]/.test(newPassword)) {
+      setError('New password must contain at least one uppercase letter')
+      return
+    }
+    
+    if (!/[a-z]/.test(newPassword)) {
+      setError('New password must contain at least one lowercase letter')
+      return
+    }
+    
+    if (!/\d/.test(newPassword)) {
+      setError('New password must contain at least one digit')
+      return
+    }
+    
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(newPassword)) {
+      setError('New password must contain at least one special character')
       return
     }
     
@@ -211,23 +223,19 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
       setChangingPassword(true)
       setError(null)
       
-      const token = localStorage.getItem('access_token')
-      await axios.put('http://localhost:8000/api/users/password',
-        {
-          current_password: currentPassword,
-          new_password: newPassword
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      await userService.changePassword({
+        current_password: currentPassword,
+        new_password: newPassword
+      })
       
       setSuccess('Password changed successfully')
       setShowPasswordModal(false)
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
-      setTimeout(() => setSuccess(false), 3000)
+      setTimeout(() => setSuccess(''), 3000)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to change password')
+      setError(err.response?.data?.detail || err.detail || 'Failed to change password')
     } finally {
       setChangingPassword(false)
     }
@@ -251,32 +259,27 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
       setUploadingAvatar(true)
       setError(null)
       
-      const token = localStorage.getItem('access_token')
       const formData = new FormData()
       formData.append('file', file)
       
-      const response = await axios.post('http://localhost:8000/api/users/avatar',
-        formData,
-        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' } }
-      )
+      const response = await userService.uploadAvatar(formData)
       
-      setAvatarUrl(response.data.avatar_url)
+      setAvatarUrl(response.avatar_url)
       setSuccess('Profile picture updated successfully')
-      setTimeout(() => setSuccess(false), 3000)
+      setTimeout(() => setSuccess(''), 3000)
       
       // Refresh user data in auth context
       const freshUserData = await userService.getCurrentUser()
       updateUser(freshUserData)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to upload profile picture')
+      setError(err.response?.data?.detail || err.detail || 'Failed to upload profile picture')
     } finally {
       setUploadingAvatar(false)
     }
   }
 
   return (
-    <div className={`min-h-screen flex ${darkMode ? 'bg-academic-midnight text-off-white' : 'bg-gray-50 text-gray-900'} transition-colors duration-300`}>
-      <div className="flex-1">
+    <div className="flex-1">
         <Header 
           title="Settings" 
           icon={Settings}
@@ -288,7 +291,7 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
           onProfileSelect={onProfileSelect}
         />
         
-        <main className="px-4 sm:px-6 lg:px-8 py-8">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Hero Section */}
           <div className="text-center mb-12">
             <h2 className="text-4xl font-bold mb-4">
@@ -307,7 +310,7 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
           )}
           {success && (
             <div className="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
-              Settings saved successfully!
+              {success}
             </div>
           )}
 
@@ -405,24 +408,6 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
                   }`}
                 />
               </div>
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Profile Visibility
-                </label>
-                <select
-                  value={privacy}
-                  onChange={(e) => setPrivacy(e.target.value)}
-                  className={`w-full p-3 border rounded-lg ${
-                    darkMode 
-                      ? 'bg-gray-900 border-gray-700 text-off-white' 
-                      : 'bg-gray-50 border-gray-300 text-gray-900'
-                  }`}
-                >
-                  <option value="public">Public</option>
-                  <option value="friends">Friends Only</option>
-                  <option value="private">Private</option>
-                </select>
-              </div>
             </div>
           </div>
 
@@ -448,38 +433,6 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
                 >
                   <div className={`w-5 h-5 bg-white rounded-full transition-transform ${
                     notifications ? 'translate-x-6' : 'translate-x-0.5'
-                  }`} />
-                </button>
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Email Alerts</p>
-                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Receive daily digest of activity</p>
-                </div>
-                <button
-                  onClick={() => setEmailAlerts(!emailAlerts)}
-                  className={`w-12 h-6 rounded-full transition-colors ${
-                    emailAlerts ? 'bg-electric-blue' : darkMode ? 'bg-gray-700' : 'bg-gray-300'
-                  }`}
-                >
-                  <div className={`w-5 h-5 bg-white rounded-full transition-transform ${
-                    emailAlerts ? 'translate-x-6' : 'translate-x-0.5'
-                  }`} />
-                </button>
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Sound Effects</p>
-                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Play sounds for notifications and interactions</p>
-                </div>
-                <button
-                  onClick={() => setSoundEffects(!soundEffects)}
-                  className={`w-12 h-6 rounded-full transition-colors ${
-                    soundEffects ? 'bg-electric-blue' : darkMode ? 'bg-gray-700' : 'bg-gray-300'
-                  }`}
-                >
-                  <div className={`w-5 h-5 bg-white rounded-full transition-transform ${
-                    soundEffects ? 'translate-x-6' : 'translate-x-0.5'
                   }`} />
                 </button>
               </div>
@@ -769,7 +722,6 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
             </>
           )}
         </main>
-      </div>
       
       {/* Password Change Modal */}
       {showPasswordModal && (

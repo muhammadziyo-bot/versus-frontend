@@ -78,6 +78,35 @@ class UserService {
       throw error.response?.data || { detail: 'Failed to fetch current user' };
     }
   }
+
+  async linkTelegram(payload) {
+    try {
+      const response = await api.post('/users/telegram/link', payload);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to link Telegram account' };
+    }
+  }
+
+  async unlinkTelegram() {
+    try {
+      const response = await api.delete('/users/telegram/unlink');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to unlink Telegram account' };
+    }
+  }
+
+  async uploadAvatar(formData) {
+    try {
+      const response = await api.post('/users/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to upload profile picture' };
+    }
+  }
 }
 
 export default new UserService();
