@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Users, MessageSquare, Shield, Trophy, ThumbsUp, ThumbsDown, Plus, Pencil, Trash2, X, Bot, GraduationCap, Scale, Globe, Microscope, Building2, Palette } from 'lucide-react'
+import { Users, MessageSquare, Shield, Trophy, Pencil, Trash2, X, Send, Bot, GraduationCap, Scale, Globe, Microscope, Building2, Palette, CornerDownRight } from 'lucide-react'
 import Header from '../components/Header'
 import clubService from '../services/clubService'
 
@@ -15,25 +15,126 @@ const badgeOptions = [
 ]
 const categoryOptions = ['Technology', 'Education', 'Social Policy', 'Environment', 'Science', 'Politics', 'Arts', 'Sports']
 
+function formatRelativeTime(dateStr) {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return 'just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHrs = Math.floor(diffMin / 60)
+  if (diffHrs < 24) return `${diffHrs}h ago`
+  const diffDays = Math.floor(diffHrs / 24)
+  if (diffDays === 1) return 'yesterday'
+  if (diffDays < 7) return `${diffDays}d ago`
+  return date.toLocaleDateString()
+}
+
+// Insert a reply into the correct spot in a message's reply tree
+function insertReply(messages, messageId, parentId, newReply) {
+  return messages.map(m => {
+    if (m.id !== messageId) return m
+    const replies = insertReplyNode(m.replies || [], parentId, newReply)
+    return { ...m, replies }
+  })
+}
+
+function insertReplyNode(replies, parentId, newReply) {
+  if (parentId === null || parentId === undefined) {
+    return [...(replies || []), newReply]
+  }
+  return (replies || []).map(r => {
+    if (r.id === parentId) {
+      return { ...r, replies: [...(r.replies || []), newReply] }
+    }
+    return { ...r, replies: insertReplyNode(r.replies || [], parentId, newReply) }
+  })
+}
+
+function Avatar({ src, name, darkMode, size = 'w-8 h-8' }) {
+  return (
+    <div className={`${size} rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+      {src ? (
+        <img src={src} alt={name} className="w-full h-full object-cover" />
+      ) : (
+        <span className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          {(name || '?').charAt(0).toUpperCase()}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function ReplyThread({ replies, darkMode, onProfileSelect, onReply, replyTarget, replyText, setReplyText, submitReply }) {
+  return (
+    <div className="mt-3 space-y-3">
+      {replies.map((reply) => (
+        <div key={reply.id} className={`pl-3 ml-4 border-l-2 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className="flex items-start space-x-2">
+            <Avatar src={reply.avatar_url} name={reply.author} darkMode={darkMode} size="w-6 h-6" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center space-x-2 mb-1">
+                <button
+                  onClick={() => onProfileSelect && onProfileSelect(reply.author)}
+                  className={`text-sm font-medium hover:text-electric-blue transition-colors ${darkMode ? 'text-white' : 'text-gray-900'}`}
+                >
+                  {reply.author}
+                </button>
+                <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                  {formatRelativeTime(reply.created_at)}
+                </span>
+                <button
+                  onClick={() => onReply(reply.id)}
+                  className={`text-xs ${darkMode ? 'text-gray-400 hover:text-electric-blue' : 'text-gray-500 hover:text-electric-blue'}`}
+                >
+                  Reply
+                </button>
+              </div>
+              <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{reply.content}</p>
+
+              {reply.replies && reply.replies.length > 0 && (
+                <ReplyThread
+                  replies={reply.replies}
+                  darkMode={darkMode}
+                  onProfileSelect={onProfileSelect}
+                  onReply={onReply}
+                  replyTarget={replyTarget}
+                  replyText={replyText}
+                  setReplyText={setReplyText}
+                  submitReply={submitReply}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function ClubDetailView({ onBack, darkMode, setDarkMode, getClubBadge, user, isAuthenticated, onShowLogin, onProfileSelect, setClubs }) {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState('chat')
   const [isJoined, setIsJoined] = useState(false)
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState(null)
-  const [discussions, setDiscussions] = useState([])
-  const [loadingDiscussions, setLoadingDiscussions] = useState(false)
+  const [messages, setMessages] = useState([])
+  const [loadingMessages, setLoadingMessages] = useState(false)
   const [members, setMembers] = useState([])
   const [loadingMembers, setLoadingMembers] = useState(false)
   const [clubData, setClubData] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // Discussion create form
-  const [showCreateDiscussion, setShowCreateDiscussion] = useState(false)
-  const [newDiscussionTitle, setNewDiscussionTitle] = useState('')
-  const [newDiscussionContent, setNewDiscussionContent] = useState('')
-  const [creatingDiscussion, setCreatingDiscussion] = useState(false)
+  // Chat composer
+  const [newMessage, setNewMessage] = useState('')
+  const [sendingMessage, setSendingMessage] = useState(false)
+  // Reply composer: target = messageId (root) and parentId (reply) or null
+  const [replyTarget, setReplyTarget] = useState(null)
+  const [replyText, setReplyText] = useState('')
+  const [sendingReply, setSendingReply] = useState(false)
+  const chatEndRef = useRef(null)
 
   // Founder edit form
   const [showEditModal, setShowEditModal] = useState(false)
@@ -77,25 +178,26 @@ function ClubDetailView({ onBack, darkMode, setDarkMode, getClubBadge, user, isA
     }
   }
 
-  const loadDiscussions = async () => {
+  const loadChat = async () => {
     if (!clubData?.id) return
     try {
-      setLoadingDiscussions(true)
-      const data = await clubService.getClubDiscussions(clubData.id)
-      setDiscussions(data)
+      setLoadingMessages(true)
+      const data = await clubService.getClubChat(clubData.id)
+      setMessages(data)
     } catch (err) {
-      console.error('Error loading discussions:', err)
+      console.error('Error loading chat:', err)
+      setError(err.detail || 'Failed to load chat')
     } finally {
-      setLoadingDiscussions(false)
+      setLoadingMessages(false)
     }
   }
 
-  // Load discussions when joined
+  // Load chat when joined
   useEffect(() => {
-    if (isJoined && clubData?.id) {
-      loadDiscussions()
+    if (isJoined && clubData?.id && activeTab === 'chat') {
+      loadChat()
     }
-  }, [isJoined, clubData?.id])
+  }, [isJoined, clubData?.id, activeTab])
 
   // Load members when members tab is active
   useEffect(() => {
@@ -103,6 +205,13 @@ function ClubDetailView({ onBack, darkMode, setDarkMode, getClubBadge, user, isA
       loadMembers()
     }
   }, [activeTab, clubData?.id])
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages.length, activeTab])
 
   const getRoleLabel = (member) => {
     if (member.is_founder) return 'Founder'
@@ -141,10 +250,10 @@ function ClubDetailView({ onBack, darkMode, setDarkMode, getClubBadge, user, isA
     try {
       if (prevJoined) {
         await clubService.leaveClub(clubData.id)
-        setDiscussions([])
+        setMessages([])
       } else {
         await clubService.joinClub(clubData.id)
-        await loadDiscussions()
+        await loadChat()
         await loadMembers()
       }
     } catch (err) {
@@ -157,95 +266,100 @@ function ClubDetailView({ onBack, darkMode, setDarkMode, getClubBadge, user, isA
     }
   }
 
-  const handleVoteDiscussion = async (discussionId, voteType) => {
+  const handleSendMessage = async () => {
     if (!isAuthenticated) {
       onShowLogin()
       return
     }
     if (!isJoined) {
-      setError('Join the club to vote on discussions')
+      setError('Join the club to chat')
       return
     }
+    const text = newMessage.trim()
+    if (!text) return
 
-    const prevDiscussions = discussions
+    setNewMessage('')
+    setSendingMessage(true)
 
-    // Optimistic update
-    setDiscussions(prev => prev.map(d => {
-      if (d.id !== discussionId) return d
-      const prevVote = d.user_vote
-      const isOff = prevVote === voteType
-      if (isOff) {
-        return {
-          ...d,
-          user_vote: null,
-          upvotes: Math.max(0, (d.upvotes || 0) + (voteType === 'up' ? -1 : 0)),
-          downvotes: Math.max(0, (d.downvotes || 0) + (voteType === 'down' ? -1 : 0)),
-        }
-      }
-      return {
-        ...d,
-        user_vote: voteType,
-        upvotes: Math.max(0, (d.upvotes || 0) + (voteType === 'up' ? 1 : 0) + (prevVote === 'up' ? -1 : 0)),
-        downvotes: Math.max(0, (d.downvotes || 0) + (voteType === 'down' ? 1 : 0) + (prevVote === 'down' ? -1 : 0)),
-      }
-    }))
+    // Optimistic append
+    const tempId = `temp-${Date.now()}`
+    setMessages(prev => [...prev, {
+      id: tempId,
+      content: text,
+      author: user?.username || 'You',
+      author_id: user?.id,
+      avatar_url: user?.avatar_url || null,
+      created_at: new Date().toISOString(),
+      replies: [],
+    }])
 
     try {
-      const result = await clubService.voteClubDiscussion(clubData.id, discussionId, voteType)
-      setDiscussions(prev => prev.map(d =>
-        d.id === discussionId
-          ? { ...d, upvotes: result.upvotes, downvotes: result.downvotes, user_vote: result.user_vote }
-          : d
-      ))
+      const real = await clubService.postClubMessage(clubData.id, text)
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...real, replies: [] } : m))
     } catch (err) {
-      setDiscussions(prevDiscussions)
-      setError(err.detail || 'Failed to vote on discussion')
-      console.error('Error voting on discussion:', err)
-    }
-  }
-
-  const handleCreateDiscussion = async () => {
-    if (!isAuthenticated) {
-      onShowLogin()
-      return
-    }
-    if (!isJoined) {
-      setError('Join the club to create a discussion')
-      return
-    }
-    if (!newDiscussionTitle.trim() || !newDiscussionContent.trim()) {
-      setError('Title and content are required')
-      return
-    }
-
-    try {
-      setCreatingDiscussion(true)
-      setError(null)
-      const created = await clubService.createClubDiscussion(clubData.id, {
-        title: newDiscussionTitle,
-        content: newDiscussionContent,
-      })
-      setDiscussions(prev => [{
-        ...created,
-        upvotes: 0,
-        downvotes: 0,
-        comment_count: 0,
-        user_vote: null,
-        author: user?.username || 'You',
-      }, ...prev])
-      setNewDiscussionTitle('')
-      setNewDiscussionContent('')
-      setShowCreateDiscussion(false)
-    } catch (err) {
-      setError(err.detail || 'Failed to create discussion')
-      console.error('Error creating discussion:', err)
+      setMessages(prev => prev.filter(m => m.id !== tempId))
+      setError(err.detail || 'Failed to send message')
+      console.error('Error sending message:', err)
     } finally {
-      setCreatingDiscussion(false)
+      setSendingMessage(false)
     }
   }
 
-  const openDiscussion = (discussion) => {
-    navigate(`/discussions/${discussion.id}`)
+  const handleSubmitReply = async (messageId) => {
+    if (!isAuthenticated) {
+      onShowLogin()
+      return
+    }
+    if (!isJoined) {
+      setError('Join the club to chat')
+      return
+    }
+    const text = replyText.trim()
+    const parentId = replyTarget?.parentId ?? null
+    if (!text) return
+
+    setReplyText('')
+    setReplyTarget(null)
+    setSendingReply(true)
+
+    // Optimistic append
+    const tempId = `temp-${Date.now()}`
+    const tempReply = {
+      id: tempId,
+      content: text,
+      author: user?.username || 'You',
+      author_id: user?.id,
+      avatar_url: user?.avatar_url || null,
+      parent_id: parentId,
+      created_at: new Date().toISOString(),
+      replies: [],
+    }
+    setMessages(prev => insertReply(prev, messageId, parentId, tempReply))
+
+    try {
+      const real = await clubService.replyToClubMessage(clubData.id, messageId, text, parentId)
+      setMessages(prev => removeTempReply(prev, messageId, tempId))
+      setMessages(prev => insertReply(prev, messageId, parentId, { ...real, replies: [] }))
+    } catch (err) {
+      setMessages(prev => removeTempReply(prev, messageId, tempId))
+      setError(err.detail || 'Failed to post reply')
+      console.error('Error posting reply:', err)
+    } finally {
+      setSendingReply(false)
+    }
+  }
+
+  const removeTempReply = (messages, messageId, tempId) => {
+    return messages.map(m => {
+      if (m.id !== messageId) return m
+      const replies = removeNode(m.replies || [], tempId)
+      return { ...m, replies }
+    })
+  }
+
+  const removeNode = (replies, id) => {
+    const result = (replies || []).filter(r => r.id !== id)
+    return result.map(r => ({ ...r, replies: removeNode(r.replies || [], id) }))
   }
 
   const openEditModal = () => {
@@ -271,7 +385,6 @@ function ClubDetailView({ onBack, darkMode, setDarkMode, getClubBadge, user, isA
         badge: editBadge,
       })
       setClubData(updated)
-      // Update the list card too
       if (setClubs) {
         setClubs(prev => (prev || []).map(c => c.id === updated.id ? { ...c, name: updated.name, description: updated.description, category: updated.category, badge: updated.badge } : c))
       }
@@ -440,9 +553,9 @@ function ClubDetailView({ onBack, darkMode, setDarkMode, getClubBadge, user, isA
               <div className={`text-center p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
                 <div className="flex items-center justify-center space-x-2 text-purple-500 mb-2">
                   <MessageSquare className="w-5 h-5" />
-                  <span className="text-2xl font-bold">{discussions.length}</span>
+                  <span className="text-2xl font-bold">{messages.length}</span>
                 </div>
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Discussions</p>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Messages</p>
               </div>
             </div>
           </div>
@@ -450,7 +563,7 @@ function ClubDetailView({ onBack, darkMode, setDarkMode, getClubBadge, user, isA
           {/* Navigation Tabs */}
           <div className={`border-b mb-8 ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
             <div className="flex space-x-8">
-              {['overview', 'members', 'discussions'].map((tab) => (
+              {['chat', 'members'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -468,51 +581,141 @@ function ClubDetailView({ onBack, darkMode, setDarkMode, getClubBadge, user, isA
 
           {/* Tab Content */}
           <div className="min-h-[400px]">
-            {activeTab === 'overview' && (
-              <div className="space-y-8">
-                <div>
-                  <h3 className="text-xl font-semibold mb-4">Recent Activity</h3>
-                  {!isJoined ? (
-                    <div className="text-center py-8">
-                      <MessageSquare className={`w-12 h-12 mx-auto mb-3 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
-                      <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                        Join the club to see recent activity
-                      </p>
-                    </div>
-                  ) : loadingDiscussions ? (
-                    <div className="flex justify-center py-8">
-                      <div className="w-8 h-8 border-4 border-electric-blue border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                  ) : discussions.length === 0 ? (
-                    <div className="text-center py-8">
-                      <MessageSquare className={`w-12 h-12 mx-auto mb-3 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
-                      <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                        No recent activity yet
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {discussions.slice(0, 3).map((discussion) => (
+            {activeTab === 'chat' && (
+              <div>
+                <h3 className="text-xl font-semibold mb-4">Club Chat</h3>
+
+                {!isJoined ? (
+                  <div className="text-center py-12">
+                    <MessageSquare className={`w-16 h-16 mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
+                    <h4 className="text-lg font-medium mb-2">Join to Chat</h4>
+                    <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                      You must be a member of this club to join the conversation.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Composer */}
+                    <div className={`p-4 rounded-lg border mb-6 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                      <div className="flex items-center space-x-3">
+                        <Avatar src={user?.avatar_url} name={user?.username || 'You'} darkMode={darkMode} size="w-9 h-9" />
+                        <input
+                          type="text"
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage() } }}
+                          placeholder={`Message ${clubData.name}...`}
+                          className={`flex-1 p-3 rounded-lg outline-none ${
+                            darkMode ? 'bg-gray-900 text-white placeholder-gray-500' : 'bg-white text-gray-900 placeholder-gray-400'
+                          }`}
+                        />
                         <button
-                          key={discussion.id}
-                          onClick={() => openDiscussion(discussion)}
-                          className={`w-full text-left p-4 rounded-lg border transition-colors ${darkMode ? 'bg-gray-800 border-gray-700 hover:border-electric-blue' : 'bg-gray-50 border-gray-200 hover:border-electric-blue'}`}
+                          onClick={handleSendMessage}
+                          disabled={sendingMessage || !newMessage.trim()}
+                          className="p-3 rounded-lg bg-electric-blue text-white hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <div className="flex items-center space-x-3 mb-2">
-                            <MessageSquare className="w-5 h-5 text-electric-blue" />
-                            <span className="font-medium">New Discussion</span>
-                            <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                              {new Date(discussion.created_at).toLocaleString()}
-                            </span>
-                          </div>
-                          <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                            <span className="font-medium">{discussion.author}</span> posted "{discussion.title}"
-                          </p>
+                          <Send className="w-5 h-5" />
                         </button>
-                      ))}
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    {/* Messages */}
+                    {loadingMessages ? (
+                      <div className="flex justify-center py-12">
+                        <div className="w-8 h-8 border-4 border-electric-blue border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                    ) : messages.length === 0 ? (
+                      <div className="text-center py-12">
+                        <MessageSquare className={`w-16 h-16 mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
+                        <h4 className="text-lg font-medium mb-2">No messages yet</h4>
+                        <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          Start the conversation!
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {messages.map((message) => (
+                          <div key={message.id} className={`p-4 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                            <div className="flex items-start space-x-3">
+                              <Avatar src={message.avatar_url} name={message.author} darkMode={darkMode} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <button
+                                    onClick={() => onProfileSelect && onProfileSelect(message.author)}
+                                    className={`font-medium hover:text-electric-blue transition-colors ${darkMode ? 'text-white' : 'text-gray-900'}`}
+                                  >
+                                    {message.author}
+                                  </button>
+                                  <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                                    {formatRelativeTime(message.created_at)}
+                                  </span>
+                                </div>
+                                <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{message.content}</p>
+
+                                <div className="mt-2">
+                                  <button
+                                    onClick={() => setReplyTarget({ messageId: message.id, parentId: null })}
+                                    className={`text-xs flex items-center space-x-1 ${darkMode ? 'text-gray-400 hover:text-electric-blue' : 'text-gray-500 hover:text-electric-blue'}`}
+                                  >
+                                    <CornerDownRight className="w-3 h-3" />
+                                    <span>Reply</span>
+                                  </button>
+                                </div>
+
+                                {/* Reply composer for this message */}
+                                {replyTarget && replyTarget.messageId === message.id && (
+                                  <div className="mt-3">
+                                    <div className="flex items-center space-x-2">
+                                      <input
+                                        type="text"
+                                        autoFocus
+                                        value={replyText}
+                                        onChange={(e) => setReplyText(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSubmitReply(message.id) } }}
+                                        placeholder={replyTarget.parentId ? `Reply to a message...` : `Reply to ${message.author}...`}
+                                        className={`flex-1 p-2 rounded-lg text-sm outline-none ${
+                                          darkMode ? 'bg-gray-900 text-white placeholder-gray-500' : 'bg-white text-gray-900 placeholder-gray-400'
+                                        }`}
+                                      />
+                                      <button
+                                        onClick={() => handleSubmitReply(message.id)}
+                                        disabled={sendingReply || !replyText.trim()}
+                                        className="p-2 rounded-lg bg-electric-blue text-white hover:bg-blue-600 transition-colors disabled:opacity-50"
+                                      >
+                                        <Send className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => { setReplyTarget(null); setReplyText('') }}
+                                        className={`p-2 rounded-lg ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'}`}
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Replies */}
+                                {message.replies && message.replies.length > 0 && (
+                                  <ReplyThread
+                                    replies={message.replies}
+                                    darkMode={darkMode}
+                                    onProfileSelect={onProfileSelect}
+                                    onReply={(parentId) => setReplyTarget({ messageId: message.id, parentId })}
+                                    replyTarget={replyTarget}
+                                    replyText={replyText}
+                                    setReplyText={setReplyText}
+                                    submitReply={handleSubmitReply}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div ref={chatEndRef} />
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
@@ -570,148 +773,6 @@ function ClubDetailView({ onBack, darkMode, setDarkMode, getClubBadge, user, isA
                               </span>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'discussions' && (
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-semibold">Club Discussions</h3>
-                  {isJoined && (
-                    <button
-                      onClick={() => setShowCreateDiscussion(!showCreateDiscussion)}
-                      className="px-4 py-2 bg-electric-blue text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center space-x-2"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>New Discussion</span>
-                    </button>
-                  )}
-                </div>
-
-                {error && (
-                  <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-                    {error}
-                  </div>
-                )}
-
-                {showCreateDiscussion && isJoined && (
-                  <div className={`mb-6 p-4 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-                    <h4 className="font-semibold mb-3">Create Discussion</h4>
-                    <div className="space-y-3">
-                      <input
-                        type="text"
-                        value={newDiscussionTitle}
-                        onChange={(e) => setNewDiscussionTitle(e.target.value)}
-                        placeholder="Discussion title"
-                        className={`w-full p-3 border rounded-lg ${
-                          darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
-                        }`}
-                      />
-                      <textarea
-                        rows={3}
-                        value={newDiscussionContent}
-                        onChange={(e) => setNewDiscussionContent(e.target.value)}
-                        placeholder="What do you want to discuss?"
-                        className={`w-full p-3 border rounded-lg resize-none ${
-                          darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
-                        }`}
-                      />
-                      <div className="flex justify-end space-x-2">
-                        <button
-                          onClick={() => setShowCreateDiscussion(false)}
-                          className={`px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={handleCreateDiscussion}
-                          disabled={creatingDiscussion}
-                          className="px-4 py-2 bg-electric-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
-                        >
-                          {creatingDiscussion ? 'Posting...' : 'Post'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {!isJoined ? (
-                  <div className="text-center py-12">
-                    <MessageSquare className={`w-16 h-16 mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
-                    <h4 className="text-lg font-medium mb-2">Join to View Discussions</h4>
-                    <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                      You must be a member of this club to view and participate in discussions.
-                    </p>
-                  </div>
-                ) : loadingDiscussions ? (
-                  <div className="flex justify-center py-12">
-                    <div className="w-8 h-8 border-4 border-electric-blue border-t-transparent rounded-full animate-spin"></div>
-                  </div>
-                ) : discussions.length === 0 ? (
-                  <div className="text-center py-12">
-                    <MessageSquare className={`w-16 h-16 mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
-                    <h4 className="text-lg font-medium mb-2">No Discussions Yet</h4>
-                    <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                      Be the first to start a discussion in this club!
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {discussions.map((discussion) => (
-                      <div
-                        key={discussion.id}
-                        className={`p-4 rounded-lg border transition-colors ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <button
-                            onClick={() => openDiscussion(discussion)}
-                            className="text-left font-medium hover:text-electric-blue transition-colors"
-                          >
-                            {discussion.title}
-                          </button>
-                          <button
-                            onClick={() => onProfileSelect && onProfileSelect(discussion.author)}
-                            className={`text-sm ${darkMode ? 'text-gray-400 hover:text-electric-blue' : 'text-gray-600 hover:text-electric-blue'} transition-colors`}
-                          >
-                            {discussion.author}
-                          </button>
-                        </div>
-                        <button
-                          onClick={() => openDiscussion(discussion)}
-                          className={`block w-full text-left mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                        >
-                          {discussion.content}
-                        </button>
-                        <div className="flex items-center space-x-4 text-sm">
-                          <button
-                            onClick={() => handleVoteDiscussion(discussion.id, 'up')}
-                            className={`flex items-center space-x-1 transition-colors ${
-                              discussion.user_vote === 'up' ? 'text-green-500' : darkMode ? 'text-gray-400 hover:text-green-500' : 'text-gray-600 hover:text-green-500'
-                            }`}
-                          >
-                            <ThumbsUp className="w-4 h-4" fill={discussion.user_vote === 'up' ? 'currentColor' : 'none'} />
-                            <span>{discussion.upvotes || 0}</span>
-                          </button>
-                          <button
-                            onClick={() => handleVoteDiscussion(discussion.id, 'down')}
-                            className={`flex items-center space-x-1 transition-colors ${
-                              discussion.user_vote === 'down' ? 'text-red-500' : darkMode ? 'text-gray-400 hover:text-red-500' : 'text-gray-600 hover:text-red-500'
-                            }`}
-                          >
-                            <ThumbsDown className="w-4 h-4" fill={discussion.user_vote === 'down' ? 'currentColor' : 'none'} />
-                            <span>{discussion.downvotes || 0}</span>
-                          </button>
-                          <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                            {discussion.comment_count || 0} comments
-                          </span>
-                          <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                            {new Date(discussion.created_at).toLocaleDateString()}
-                          </span>
                         </div>
                       </div>
                     ))}

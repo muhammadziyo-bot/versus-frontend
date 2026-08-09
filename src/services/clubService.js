@@ -78,15 +78,6 @@ class ClubService {
     }
   }
 
-  async voteClubDiscussion(clubId, discussionId, voteType) {
-    try {
-      const response = await api.post(`/clubs/${clubId}/discussions/${discussionId}/vote`, { vote_type: voteType });
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || { detail: 'Failed to vote on discussion' };
-    }
-  }
-
   async getClub(clubId) {
     try {
       const response = await api.get(`/clubs/${clubId}`);
@@ -141,30 +132,30 @@ class ClubService {
     }
   }
 
-  async getClubDiscussions(clubId) {
+  async getClubChat(clubId) {
     try {
-      const response = await api.get(`/clubs/${clubId}/discussions`);
+      const response = await api.get(`/clubs/${clubId}/chat`);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to fetch club discussions' };
+      throw error.response?.data || { detail: 'Failed to fetch club chat' };
     }
   }
 
-  async createClubDiscussion(clubId, discussionData) {
+  async postClubMessage(clubId, content) {
     try {
-      const response = await api.post(`/clubs/${clubId}/discussions`, discussionData);
+      const response = await api.post(`/clubs/${clubId}/chat`, { content });
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to create discussion' };
+      throw error.response?.data || { detail: 'Failed to post message' };
     }
   }
 
-  async createClubComment(clubId, discussionId, commentData) {
+  async replyToClubMessage(clubId, messageId, content, parentId = null) {
     try {
-      const response = await api.post(`/clubs/${clubId}/discussions/${discussionId}/comments`, commentData);
+      const response = await api.post(`/clubs/${clubId}/chat/${messageId}/reply`, { content, parent_id: parentId });
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to create comment' };
+      throw error.response?.data || { detail: 'Failed to post reply' };
     }
   }
 }
