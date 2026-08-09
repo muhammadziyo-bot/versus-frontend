@@ -15,7 +15,7 @@ function Sidebar({ currentView, darkMode }) {
   ]
 
   return (
-    <div className={`w-32 ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'} border-r flex flex-col py-4 space-y-2`}>
+    <div className={`hidden md:flex w-32 ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'} border-r flex-col py-4 space-y-2 flex-shrink-0`}>
       <div className="flex flex-col space-y-1">
         {menuItems.map((item) => (
           <div

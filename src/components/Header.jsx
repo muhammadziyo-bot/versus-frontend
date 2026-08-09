@@ -1,33 +1,95 @@
-import React, { useState } from 'react'
-import { Sun, Moon, User, LogOut, Settings } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Sun, Moon, User, LogOut, Settings, Menu, X, Users, MessageSquare, Shield, Sword, UserPlus, HelpCircle } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+
+const menuItems = [
+  { icon: Sword, label: 'Arena', view: 'arena', path: '/' },
+  { icon: Users, label: 'Debaters', view: 'debaters', path: '/debaters' },
+  { icon: MessageSquare, label: 'Discussions', view: 'discussions', path: '/discussions' },
+  { icon: Shield, label: 'Clubs', view: 'clubs', path: '/clubs' },
+  { icon: UserPlus, label: 'Friends', view: 'friends', path: '/friends' },
+  { icon: Settings, label: 'Settings', view: 'settings', path: '/settings' },
+  { icon: HelpCircle, label: 'Help', view: 'help', path: '/help' }
+]
+
+const getCurrentViewFromPath = (pathname) => {
+  if (pathname === '/') return 'arena'
+  if (pathname.startsWith('/debaters')) return 'debaters'
+  if (pathname.startsWith('/discussions')) return 'discussions'
+  if (pathname.startsWith('/clubs')) return 'clubs'
+  if (pathname.startsWith('/settings')) return 'settings'
+  if (pathname.startsWith('/help')) return 'help'
+  if (pathname.startsWith('/friends')) return 'friends'
+  if (pathname.startsWith('/battle')) return 'arena'
+  return 'arena'
+}
 
 function Header({ title, icon, darkMode, setDarkMode, showBackButton, onBack, children, user, isAuthenticated, onShowLogin, onProfileSelect }) {
   const { logout } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showMobileMenu, setShowMobileMenu] = useState(false)
 
   const handleLogout = async () => {
     await logout()
     setShowProfileMenu(false)
   }
 
+  // Close the mobile drawer when the route changes
+  useEffect(() => {
+    setShowMobileMenu(false)
+  }, [location.pathname])
+
+  // Close the mobile drawer on Escape key
+  useEffect(() => {
+    if (!showMobileMenu) return
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setShowMobileMenu(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [showMobileMenu])
+
+  // Lock body scroll while the mobile drawer is open
+  useEffect(() => {
+    if (showMobileMenu) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [showMobileMenu])
+
+  const currentView = getCurrentViewFromPath(location.pathname)
+
   return (
+    <>
     <header className={`border-b ${darkMode ? 'border-gray-800 bg-card-bg' : 'border-gray-200 bg-white'} transition-colors duration-300`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 min-w-0">
             {showBackButton && (
-              <button 
+              <button
                 onClick={onBack}
-                className={`${darkMode ? 'text-gray-400 hover:text-off-white' : 'text-gray-600 hover:text-gray-900'} transition-colors`}
+                className={`flex-shrink-0 ${darkMode ? 'text-gray-400 hover:text-off-white' : 'text-gray-600 hover:text-gray-900'} transition-colors`}
               >
                 ← Back
               </button>
             )}
-            {icon && React.createElement(icon, { className: "w-8 h-8 text-electric-blue" })}
-            <h1 className="text-2xl font-bold">{title}</h1>
+            {/* Mobile hamburger menu button */}
+            <button
+              onClick={() => setShowMobileMenu(true)}
+              aria-label="Open navigation menu"
+              className={`md:hidden p-2 rounded-lg flex-shrink-0 ${darkMode ? 'hover:bg-gray-800 text-gray-300' : 'hover:bg-gray-100 text-gray-600'} transition-colors`}
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            {icon && React.createElement(icon, { className: "w-8 h-8 text-electric-blue flex-shrink-0" })}
+            <h1 className="text-xl sm:text-2xl font-bold truncate">{title}</h1>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-4 flex-shrink-0">
             {children}
             
             {/* User Profile Section */}
@@ -53,7 +115,7 @@ function Header({ title, icon, darkMode, setDarkMode, showBackButton, onBack, ch
                   </button>
                   <button
                     onClick={() => setShowProfileMenu(!showProfileMenu)}
-                    className={`text-sm font-medium hover:text-electric-blue transition-colors ${darkMode ? 'text-off-white' : 'text-gray-900'}`}
+                    className={`text-sm font-medium hover:text-electric-blue transition-colors hidden sm:block ${darkMode ? 'text-off-white' : 'text-gray-900'}`}
                   >
                     {user.username}
                   </button>
@@ -123,6 +185,71 @@ function Header({ title, icon, darkMode, setDarkMode, showBackButton, onBack, ch
         </div>
       </div>
     </header>
+
+    {/* Mobile Navigation Drawer */}
+    <div
+      className={`fixed inset-0 z-50 md:hidden ${
+        showMobileMenu ? 'pointer-events-auto' : 'pointer-events-none'
+      }`}
+    >
+      {/* Backdrop */}
+      <div
+        onClick={() => setShowMobileMenu(false)}
+        className={`absolute inset-0 bg-black transition-opacity duration-300 ${
+          showMobileMenu ? 'opacity-50' : 'opacity-0'
+        }`}
+      />
+
+      {/* Drawer Panel */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation menu"
+        className={`absolute top-0 left-0 h-full w-72 max-w-[85vw] shadow-xl flex flex-col transition-transform duration-300 ${
+          showMobileMenu ? 'translate-x-0' : '-translate-x-full'
+        } ${darkMode ? 'bg-card-bg border-r border-gray-800' : 'bg-white border-r border-gray-200'}`}
+      >
+        <div className={`flex items-center justify-between px-4 py-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+          <span className={`text-lg font-bold ${darkMode ? 'text-off-white' : 'text-gray-900'}`}>Menu</span>
+          <button
+            onClick={() => setShowMobileMenu(false)}
+            aria-label="Close navigation menu"
+            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-300' : 'hover:bg-gray-100 text-gray-600'} transition-colors`}
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto py-2">
+          {menuItems.map((item) => {
+            const active = currentView === item.view
+            return (
+              <button
+                key={item.view}
+                onClick={() => navigate(item.path)}
+                className={`w-full flex items-center space-x-3 px-4 py-3 text-left transition-colors ${
+                  active
+                    ? darkMode
+                      ? 'bg-gray-800 text-electric-blue'
+                      : 'bg-gray-100 text-electric-blue'
+                    : darkMode
+                      ? 'text-gray-300 hover:bg-gray-800'
+                      : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <item.icon className="w-5 h-5 flex-shrink-0" />
+                <span className="text-sm font-medium">{item.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+
+        <div className={`px-4 py-4 border-t ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
+          <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Digital Arena</p>
+        </div>
+      </div>
+    </div>
+    </>
   )
 }
 

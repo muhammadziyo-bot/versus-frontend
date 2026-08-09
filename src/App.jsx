@@ -84,7 +84,9 @@ const BattleRoomWrapper = ({ darkMode, onBack }) => {
 const Layout = ({ children, darkMode, setDarkMode, currentView }) => (
   <div className={`min-h-screen flex ${darkMode ? 'bg-academic-midnight text-off-white' : 'bg-gray-50 text-gray-900'} transition-colors duration-300`}>
     <Sidebar currentView={currentView} darkMode={darkMode} />
-    {children}
+    <div className="flex-1 min-w-0">
+      {children}
+    </div>
   </div>
 )
 
