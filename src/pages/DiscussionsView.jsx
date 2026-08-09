@@ -244,10 +244,10 @@ function DiscussionsView({ discussions, setDiscussions, discussionStats, dataLoa
           {/* Hero Section */}
           <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-12">
             <div className="text-center md:text-left max-w-xl">
-              <h2 className="text-4xl md:text-5xl font-bold mb-3">
+              <h2 className="text-2xl md:text-3xl font-bold mb-2 leading-snug">
                 Engage in thoughtful conversations and explore diverse perspectives
               </h2>
-              <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              <p className={`text-base md:text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 Join discussions on important topics and share your insights with the community
               </p>
             </div>
