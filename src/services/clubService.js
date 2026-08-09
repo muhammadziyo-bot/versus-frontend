@@ -2,6 +2,20 @@ import axios from 'axios';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000') + '/api';
 
+// Normalize FastAPI errors: validation errors have `detail` as an array of
+// objects, which would crash React if rendered directly. Always produce a string.
+function toErrorMessage(error, fallback) {
+  const data = error?.response?.data;
+  if (data && typeof data === 'object' && data.detail) {
+    if (typeof data.detail === 'string') return data.detail;
+    if (Array.isArray(data.detail)) {
+      const msgs = data.detail.map(x => (x && x.msg ? x.msg : '')).filter(Boolean).join('; ');
+      if (msgs) return msgs;
+    }
+  }
+  return fallback;
+}
+
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -30,7 +44,7 @@ class ClubService {
       const response = await api.get(`/clubs?skip=${skip}&limit=${limit}`);
       return response.data.items || response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to fetch clubs' };
+      throw { detail: toErrorMessage(error, 'Failed to fetch clubs') };
     }
   }
 
@@ -47,7 +61,7 @@ class ClubService {
       const response = await api.get(`/clubs/search?${query}`);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to search clubs' };
+      throw { detail: toErrorMessage(error, 'Failed to search clubs') };
     }
   }
 
@@ -56,7 +70,7 @@ class ClubService {
       const response = await api.get('/clubs/my');
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to fetch my clubs' };
+      throw { detail: toErrorMessage(error, 'Failed to fetch my clubs') };
     }
   }
 
@@ -65,7 +79,7 @@ class ClubService {
       const response = await api.patch(`/clubs/${clubId}`, updateData);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to update club' };
+      throw { detail: toErrorMessage(error, 'Failed to update club') };
     }
   }
 
@@ -74,7 +88,7 @@ class ClubService {
       const response = await api.delete(`/clubs/${clubId}`);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to delete club' };
+      throw { detail: toErrorMessage(error, 'Failed to delete club') };
     }
   }
 
@@ -83,7 +97,7 @@ class ClubService {
       const response = await api.get(`/clubs/${clubId}`);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to fetch club' };
+      throw { detail: toErrorMessage(error, 'Failed to fetch club') };
     }
   }
 
@@ -92,7 +106,7 @@ class ClubService {
       const response = await api.post('/clubs', clubData);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to create club' };
+      throw { detail: toErrorMessage(error, 'Failed to create club') };
     }
   }
 
@@ -101,7 +115,7 @@ class ClubService {
       const response = await api.get('/clubs/stats/overview');
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to fetch club stats' };
+      throw { detail: toErrorMessage(error, 'Failed to fetch club stats') };
     }
   }
 
@@ -110,7 +124,7 @@ class ClubService {
       const response = await api.post(`/clubs/${clubId}/join`);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to join club' };
+      throw { detail: toErrorMessage(error, 'Failed to join club') };
     }
   }
 
@@ -119,7 +133,7 @@ class ClubService {
       const response = await api.post(`/clubs/${clubId}/leave`);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to leave club' };
+      throw { detail: toErrorMessage(error, 'Failed to leave club') };
     }
   }
 
@@ -128,7 +142,7 @@ class ClubService {
       const response = await api.get(`/clubs/${clubId}/members`);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to fetch club members' };
+      throw { detail: toErrorMessage(error, 'Failed to fetch club members') };
     }
   }
 
@@ -137,7 +151,7 @@ class ClubService {
       const response = await api.get(`/clubs/${clubId}/chat`);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to fetch club chat' };
+      throw { detail: toErrorMessage(error, 'Failed to fetch club chat') };
     }
   }
 
@@ -146,16 +160,20 @@ class ClubService {
       const response = await api.post(`/clubs/${clubId}/chat`, { content });
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to post message' };
+      throw { detail: toErrorMessage(error, 'Failed to post message') };
     }
   }
 
   async replyToClubMessage(clubId, messageId, content, parentId = null) {
+    const payload = { content };
+    if (parentId !== null && parentId !== undefined) {
+      payload.parent_id = parentId;
+    }
     try {
-      const response = await api.post(`/clubs/${clubId}/chat/${messageId}/reply`, { content, parent_id: parentId });
+      const response = await api.post(`/clubs/${clubId}/chat/${messageId}/reply`, payload);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { detail: 'Failed to post reply' };
+      throw { detail: toErrorMessage(error, 'Failed to post reply') };
     }
   }
 }
