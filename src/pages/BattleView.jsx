@@ -57,11 +57,19 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const argumentRef = useRef(null)
   const timerRef = useRef(null)
   const battleRoomRef = useRef(null)
+  const userSideRef = useRef(null)
+  const currentRoundRef = useRef(1)
   const timeoutSentRef = useRef(null) // tracks (battleId, round) that already sent round_timeout
-  // Keep ref in sync with state so closures always see the latest value
+  // Keep refs in sync with state so closures always see the latest value
   useEffect(() => {
     battleRoomRef.current = battleRoom
   }, [battleRoom])
+  useEffect(() => {
+    userSideRef.current = userSide
+  }, [userSide])
+  useEffect(() => {
+    currentRoundRef.current = currentRound
+  }, [currentRound])
 
   // Timer effect - only start when battle is active AND rounds are active
   useEffect(() => {
@@ -596,9 +604,17 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         
       case 'turn_submitted':
         console.log('Turn submitted event received:', data.data)
-        setTurns(prev => [...prev, data.data])
+        // Replace any optimistic (local) placeholder for this exact turn with the server turn
+        setTurns(prev => {
+          const filtered = prev.filter(t =>
+            !(t.round_number === data.data.round_number &&
+              t.turn_number === data.data.turn_number &&
+              String(t.id).startsWith('local-'))
+          )
+          return [...filtered, data.data]
+        })
         // Clear own textarea once submission goes through
-        if (data.data.side === getUserSide()) {
+        if (data.data.side === userSideRef.current) {
           setArgumentText('')
         }
         break
@@ -615,8 +631,8 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
           // After the transition animation, load the fresh round state (rounds, timer, turns)
           setTimeout(() => {
             setRoundTransition(null)
-            if (battleRoom?.id) {
-              loadBattleDetails(battleRoom.id)
+            if (battleRoomRef.current?.id) {
+              loadBattleDetails(battleRoomRef.current.id)
             }
           }, 900)
         }
@@ -742,14 +758,33 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   }
 
   const submitArgument = () => {
-    if (argumentText.trim() && battleRoom) {
-      console.log('Submitting argument for round', currentRound, ':', argumentText.trim())
-      websocketService.submitArgument(battleRoom.id, currentRound, argumentText.trim())
+    const text = argumentText.trim()
+    if (text && battleRoom) {
+      const mySide = userSideRef.current || getUserSide()
+      const roundNum = currentRoundRef.current
+      const nextTurnNumber = turns.filter(t => t.round_number === roundNum).length + 1
+
+      console.log('Submitting argument for round', roundNum, ':', text)
+
+      // Optimistically add the turn locally so the submitter sees it immediately
+      setTurns(prev => [
+        ...prev,
+        {
+          id: `local-${Date.now()}`,
+          round_number: roundNum,
+          turn_number: nextTurnNumber,
+          side: mySide,
+          argument: text,
+          submitted_at: new Date().toISOString()
+        }
+      ])
       setArgumentText('')
-      // Optimistically update UI - will be refreshed by WebSocket event
+
+      // Send to backend (broadcasts turn_submitted to both users)
+      websocketService.submitArgument(battleRoom.id, roundNum, text)
       setError(null)
     } else {
-      console.error('Cannot submit argument:', { hasText: !!argumentText.trim(), hasBattle: !!battleRoom })
+      console.error('Cannot submit argument:', { hasText: !!text, hasBattle: !!battleRoom })
       setError('Please enter an argument before submitting')
     }
   }
