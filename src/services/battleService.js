@@ -55,6 +55,16 @@ class BattleService {
     }
   }
 
+  async getBattleTurns(battleId, roundNumber = null) {
+    try {
+      const url = roundNumber ? `/battles/${battleId}/turns?round_number=${roundNumber}` : `/battles/${battleId}/turns`;
+      const response = await api.get(url);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { detail: 'Failed to fetch battle turns' };
+    }
+  }
+
   async castVote(battleId, voteData) {
     try {
       const response = await api.post(`/battles/${battleId}/vote`, voteData);

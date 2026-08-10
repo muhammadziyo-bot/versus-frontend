@@ -13,6 +13,8 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const { user } = useAuth()
   const [battleRoom, setBattleRoom] = useState(null)
   const [rounds, setRounds] = useState([])
+  const [turns, setTurns] = useState([])
+  const [roundTransition, setRoundTransition] = useState(null) // { fromRound, toRound }
   const [messages, setMessages] = useState([])
   const [currentRound, setCurrentRound] = useState(1)
   const [wsConnected, setWsConnected] = useState(false)
@@ -55,6 +57,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const argumentRef = useRef(null)
   const timerRef = useRef(null)
   const battleRoomRef = useRef(null)
+  const timeoutSentRef = useRef(null) // tracks (battleId, round) that already sent round_timeout
   // Keep ref in sync with state so closures always see the latest value
   useEffect(() => {
     battleRoomRef.current = battleRoom
@@ -69,6 +72,22 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         const endsAt = new Date(battleRoom.round_ends_at)
         const remaining = Math.max(0, Math.floor((endsAt - now) / 1000))
         setTimeRemaining(remaining)
+
+        // When the round timer expires, notify the backend to advance the round
+        if (remaining <= 0) {
+          if (timerRef.current) {
+            clearInterval(timerRef.current)
+          }
+          const key = `${battleRoom.id}:${currentRound}`
+          if (timeoutSentRef.current !== key && websocketService.getConnectionStatus(battleRoom.id) === 'connected') {
+            timeoutSentRef.current = key
+            websocketService.sendMessage(battleRoom.id, {
+              type: 'round_timeout',
+              data: { round_number: currentRound }
+            })
+            console.log('Round timer expired, sent round_timeout for round', currentRound)
+          }
+        }
       }
       
       updateTimer()
@@ -366,7 +385,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         {
           skill_level: 'intermediate', // Could be user preference
           max_rounds: 3,
-          time_limit: 300
+          time_limit: 600
         }
       )
       
@@ -550,6 +569,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       case 'battle_state':
         setBattleRoom(data.data.battle)
         setRounds(data.data.rounds || [])
+        setTurns(data.data.turns || [])
         setCurrentRound(data.data.battle.current_round)
         // Load debate title if debate_id is present
         if (data.data.battle.debate_id && !debateTitle) {
@@ -574,24 +594,31 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         setMessages(prev => [...prev, data.data])
         break
         
-      case 'argument_submitted':
-        console.log('Argument submitted event received:', data.data)
-        setRounds(prev => prev.map(round => 
-          round.round_number === data.data.round_number 
-            ? { ...round, [`${data.data.side}_argument`]: data.data.argument }
-            : round
-        ))
-        // Round state is updated optimistically above — no fetch needed
+      case 'turn_submitted':
+        console.log('Turn submitted event received:', data.data)
+        setTurns(prev => [...prev, data.data])
+        // Clear own textarea once submission goes through
+        if (data.data.side === getUserSide()) {
+          setArgumentText('')
+        }
         break
         
       case 'round_completed':
+        console.log('Round completed event received:', data.data)
         setRounds(prev => prev.map(round => 
           round.round_number === data.data.round_number 
             ? { ...round, status: 'completed' }
             : round
         ))
         if (data.data.next_round) {
-          setCurrentRound(data.data.next_round)
+          setRoundTransition({ fromRound: data.data.round_number, toRound: data.data.next_round })
+          // After the transition animation, load the fresh round state (rounds, timer, turns)
+          setTimeout(() => {
+            setRoundTransition(null)
+            if (battleRoom?.id) {
+              loadBattleDetails(battleRoom.id)
+            }
+          }, 900)
         }
         break
         
@@ -639,9 +666,10 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
 
   const loadBattleDetails = async (battleId, userData = user) => {
     try {
-      const [battle, battleRounds] = await Promise.all([
+      const [battle, battleRounds, battleTurns] = await Promise.all([
         battleService.getBattleRoom(battleId),
-        battleService.getBattleRounds(battleId)
+        battleService.getBattleRounds(battleId),
+        battleService.getBattleTurns(battleId)
       ])
       
       console.log('=== BATTLE DETAILS LOADED ===')
@@ -656,6 +684,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       
       setBattleRoom(battle)
       setRounds(battleRounds)
+      setTurns(battleTurns || [])
       setCurrentRound(battle.current_round)
       
       // Re-determine user side after loading battle details
@@ -741,6 +770,12 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     return userSide
   }
 
+  // Returns which side should submit next in the current round (pro, con, pro, ...)
+  const getNextSide = () => {
+    const roundTurns = turns.filter(t => t.round_number === currentRound)
+    return roundTurns.length % 2 === 0 ? 'pro' : 'con'
+  }
+
   const getUserName = (userId) => {
     if (!battleRoom) return 'Unknown'
     if (userId === battleRoom.pro_user_id && battleRoom.pro_user) {
@@ -806,23 +841,22 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       return false
     }
     
-    const hasSubmitted = round[`${userSide}_argument`]
+    // Count turns already made in this round to determine whose turn it is.
+    // Pro always speaks first (turn 1 = pro, turn 2 = con, turn 3 = pro, ...).
+    const roundTurns = turns.filter(t => t.round_number === currentRound)
+    const turnCount = roundTurns.length
+    const nextSide = turnCount % 2 === 0 ? 'pro' : 'con'
+    const isMyTurn = userSide === nextSide
     
-    // Enforce sequential submission: Con can only submit after Pro
-    if (userSide === 'con' && !round.pro_argument) {
-      console.log('Cannot submit: Pro must submit first')
-      return false
-    }
-    
-    const canSubmit = battleRoom.status === 'active' && round.status === 'active' && !hasSubmitted
-    console.log('Can submit argument?', { 
-      battleStatus: battleRoom.status, 
-      roundStatus: round.status, 
-      userSide, 
-      hasSubmitted, 
-      proSubmitted: !!round.pro_argument,
-      canSubmit,
-      roundDetails: round
+    const canSubmit = battleRoom.status === 'active' && round.status === 'active' && isMyTurn
+    console.log('Can submit argument?', {
+      battleStatus: battleRoom.status,
+      roundStatus: round.status,
+      userSide,
+      turnCount,
+      nextSide,
+      isMyTurn,
+      canSubmit
     })
     
     return canSubmit
@@ -1185,9 +1219,26 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
             <div className="font-medium capitalize">{battleRoom.status}</div>
             <div className="text-xs text-gray-500">Round {currentRound}/{battleRoom.max_rounds}</div>
             {battleRoom.status === 'active' && getCurrentRound()?.status === 'active' && timeRemaining > 0 && (
-              <div className={`text-xs font-medium ${timeRemaining < 30 ? 'text-red-500' : 'text-green-500'}`}>
-                <Timer className="w-3 h-3 inline mr-1" />
-                {formatTime(timeRemaining)}
+              <div className="mt-2">
+                <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold transition-colors ${
+                  timeRemaining <= 30
+                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 animate-timer-pulse'
+                    : timeRemaining <= 60
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                    : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                }`}>
+                  <Timer className="w-4 h-4 mr-1.5" />
+                  {formatTime(timeRemaining)}
+                </div>
+                {/* Round progress bar */}
+                <div className="mt-2 h-1 w-24 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-1000 ${
+                      timeRemaining <= 30 ? 'bg-red-500' : timeRemaining <= 60 ? 'bg-amber-500' : 'bg-green-500'
+                    }`}
+                    style={{ width: `${Math.min(100, (timeRemaining / (battleRoom.round_time_limit || 600)) * 100)}%` }}
+                  />
+                </div>
               </div>
             )}
             {battleRoom.status === 'completed' && battleRoom.completed_at && (
@@ -1360,43 +1411,57 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
               </div>
               
               <div className="space-y-4">
-                {/* Pro Argument */}
-                <div className="border-l-4 border-blue-500 pl-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="font-medium text-blue-700">Pro Argument</div>
-                    {getCurrentRound()?.pro_submitted_at && (
-                      <div className="text-xs text-gray-500">
-                        {formatTimestamp(getCurrentRound().pro_submitted_at)}
+                {/* Round transition animation */}
+                {roundTransition && (
+                  <div className="animate-fade-in-up rounded-xl overflow-hidden border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800 shadow-md">
+                    <div className="px-6 py-8 text-center">
+                      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 text-3xl mb-4">
+                        ⏱️
                       </div>
-                    )}
-                  </div>
-                  {getCurrentRound()?.pro_argument ? (
-                    <div className="text-gray-700">
-                      {getCurrentRound().pro_argument}
-                    </div>
-                  ) : (
-                    <div className="text-gray-400 italic">Argument not submitted yet</div>
-                  )}
-                </div>
-                
-                {/* Con Argument */}
-                <div className="border-l-4 border-red-500 pl-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="font-medium text-red-700">Con Argument</div>
-                    {getCurrentRound()?.con_submitted_at && (
-                      <div className="text-xs text-gray-500">
-                        {formatTimestamp(getCurrentRound().con_submitted_at)}
+                      <div className="text-xl font-bold text-blue-700 dark:text-blue-300">
+                        Round {roundTransition.fromRound} Complete
                       </div>
-                    )}
-                  </div>
-                  {getCurrentRound()?.con_argument ? (
-                    <div className="text-gray-700">
-                      {getCurrentRound().con_argument}
+                      <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Starting Round {roundTransition.toRound}...
+                      </div>
+                      <div className="mt-5 h-1.5 w-3/4 mx-auto rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                        <div className="battle-shimmer h-full w-full rounded-full"></div>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="text-gray-400 italic">Argument not submitted yet</div>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* Exchange history (turns) for the current round */}
+                {(() => {
+                  const roundTurns = turns.filter(t => t.round_number === currentRound)
+                  if (roundTurns.length === 0) {
+                    return (
+                      <div className="text-gray-400 italic text-sm">No arguments yet. {getUserSide() === 'pro' ? 'You speak first (Pro)!' : 'Waiting for Pro to open the round...'}</div>
+                    )
+                  }
+                  return roundTurns.map((turn, index) => (
+                    <div
+                      key={turn.id || `${turn.round_number}-${turn.turn_number}`}
+                      className={`animate-fade-in-up border-l-4 pl-4 ${turn.side === 'pro' ? 'border-blue-500' : 'border-red-500'} ${
+                        index === roundTurns.length - 1
+                          ? 'bg-blue-50/40 dark:bg-blue-900/10 rounded-r-lg pr-3 py-2'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className={`font-medium ${turn.side === 'pro' ? 'text-blue-700' : 'text-red-700'}`}>
+                          {turn.side === 'pro' ? 'Pro' : 'Con'} — Exchange {turn.turn_number}
+                        </div>
+                        {turn.submitted_at && (
+                          <div className="text-xs text-gray-500">
+                            {formatTimestamp(turn.submitted_at)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-gray-700">{turn.argument}</div>
+                    </div>
+                  ))
+                })()}
               </div>
               
               {/* Argument Submission Area */}
@@ -1408,24 +1473,18 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
                 
                 {/* Status indicator for submission order */}
                 <div className={`mb-4 p-3 rounded-lg ${
-                  getCurrentRound()?.pro_argument && !getCurrentRound()?.con_argument
+                  canSubmitArgument()
                     ? 'bg-blue-50 border border-blue-200 dark:bg-blue-900/20 dark:border-blue-800'
-                    : !getCurrentRound()?.pro_argument
-                    ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'
-                    : 'bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800'
+                    : 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'
                 }`}>
                   <div className="text-sm">
-                    {getCurrentRound()?.pro_argument && !getCurrentRound()?.con_argument ? (
+                    {canSubmitArgument() ? (
                       <div className="text-blue-700 dark:text-blue-300">
-                        <strong>✓ Pro argument submitted</strong> - Con can now submit their argument
-                      </div>
-                    ) : !getCurrentRound()?.pro_argument ? (
-                      <div className="text-yellow-700 dark:text-yellow-300">
-                        <strong>⏳ Waiting for Pro</strong> - Pro must submit their argument first
+                        <strong>It's your turn!</strong> Type your argument and submit.
                       </div>
                     ) : (
-                      <div className="text-green-700 dark:text-green-300">
-                        <strong>✓ Both arguments submitted</strong> - Round complete
+                      <div className="text-yellow-700 dark:text-yellow-300">
+                        <strong>⏳ Waiting for {getNextSide() === 'pro' ? 'Pro' : 'Con'} to respond...</strong>
                       </div>
                     )}
                   </div>
@@ -1444,70 +1503,42 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
                           {getUserSide() === 'pro' ? 'PRO' : 'CON'}
                         </span>
                       </div>
-                      {getUserSide() === 'con' && !getCurrentRound()?.pro_argument && (
-                        <div className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-                          ⏳ Your input is disabled until Pro submits their argument
-                        </div>
-                      )}
                     </div>
                     
                     <textarea
                       ref={argumentRef}
                       value={argumentText}
                       onChange={(e) => setArgumentText(e.target.value)}
-                      disabled={getUserSide() === 'con' && !getCurrentRound()?.pro_argument}
                       className={`w-full p-4 border rounded-lg resize-none ${
                         darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
-                      } ${
-                        getUserSide() === 'con' && !getCurrentRound()?.pro_argument 
-                          ? 'opacity-50 cursor-not-allowed' 
-                          : 'focus:ring-2 focus:ring-blue-500'
-                      }`}
+                      } focus:ring-2 focus:ring-blue-500`}
                       rows="5"
-                      placeholder={
-                        getUserSide() === 'con' && !getCurrentRound()?.pro_argument
-                          ? 'Waiting for Pro to submit...'
-                          : `Enter your ${getUserSide()} argument for this round...`
-                      }
+                      placeholder={`Enter your ${getUserSide()} argument for this exchange...`}
                     />
                     
                     <button
                       onClick={submitArgument}
-                      disabled={getUserSide() === 'con' && !getCurrentRound()?.pro_argument || !argumentText.trim()}
+                      disabled={!argumentText.trim()}
                       className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
-                        getUserSide() === 'con' && !getCurrentRound()?.pro_argument || !argumentText.trim()
+                        !argumentText.trim()
                           ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                           : 'bg-blue-500 text-white hover:bg-blue-600'
                       }`}
                     >
-                      {getUserSide() === 'con' && !getCurrentRound()?.pro_argument 
-                        ? 'Wait for Pro' 
-                        : 'Submit Argument'
-                      }
+                      Submit Argument
                     </button>
                   </div>
                 )}
                 
-                {/* Message when user already submitted */}
+                {/* Message when it's not the user's turn yet */}
                 {!canSubmitArgument() && getCurrentRound() && (
-                  <div className={`p-4 rounded-lg ${
-                    getCurrentRound()?.[`${getUserSide()}_argument`]
-                      ? 'bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800'
-                      : 'bg-gray-50 border border-gray-200 dark:bg-gray-800 dark:border-gray-700'
-                  }`}>
+                  <div className={`p-4 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-800 dark:border-gray-700`}>
                     <div className="text-sm">
-                      {getCurrentRound()?.[`${getUserSide()}_argument`] ? (
-                        <div className="text-green-700 dark:text-green-300">
-                          <strong>✓ You have submitted your argument</strong>
-                        </div>
-                      ) : (
-                        <div className="text-gray-600 dark:text-gray-400">
-                          {getUserSide() === 'con' && !getCurrentRound()?.pro_argument
-                            ? 'Waiting for Pro to submit their argument first...'
-                            : 'Waiting for round to start...'
-                          }
-                        </div>
-                      )}
+                      <div className="text-gray-600 dark:text-gray-400">
+                        {battleRoom.status === 'active'
+                          ? `Waiting for ${getNextSide() === 'pro' ? 'Pro' : 'Con'} to respond... The round continues until the timer runs out.`
+                          : 'Waiting for round to start...'}
+                      </div>
                     </div>
                   </div>
                 )}
