@@ -18,6 +18,8 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const [messages, setMessages] = useState([])
   const [currentRound, setCurrentRound] = useState(1)
   const [wsConnected, setWsConnected] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false)
+  const [reconnectAttempt, setReconnectAttempt] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [showCreateBattle, setShowCreateBattle] = useState(true)
@@ -108,6 +110,16 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       }
     }
   }, [battleRoom, rounds, currentRound])
+
+  // Keep the WebSocket alive during the battle and detect drops early
+  useEffect(() => {
+    if (battleRoom && battleRoom.status === 'active' && wsConnected) {
+      const hb = setInterval(() => {
+        websocketService.sendHeartbeat(battleRoom.id)
+      }, 25000)
+      return () => clearInterval(hb)
+    }
+  }, [battleRoom, wsConnected])
 
   // Handle page visibility change (user switching tabs/closing browser)
   useEffect(() => {
@@ -563,11 +575,25 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       
       websocketService.addEventListener(battleId, handleWebSocketMessage)
       setWsConnected(true)
+      setReconnecting(false)
+      setReconnectAttempt(0)
+      setError(null)
       
     } catch (err) {
       console.error('Failed to connect to battle WebSocket:', err)
+      setWsConnected(false)
       setError('Failed to connect to real-time battle')
     }
+  }
+
+  const reconnectBattle = async () => {
+    const id = battleRoomRef.current?.id
+    if (!id) return
+    setError(null)
+    await connectToBattle(id)
+    // Refresh battle state + turns so any missed broadcasts are caught up
+    await loadBattleDetails(id)
+    websocketService.requestBattleState(id)
   }
 
   const handleWebSocketMessage = (data) => {
@@ -667,6 +693,36 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         console.error('WebSocket error:', data.data.message)
         break
         
+      case 'disconnected':
+        console.warn('Battle WebSocket disconnected')
+        setWsConnected(false)
+        break
+
+      case 'reconnecting':
+        console.log('Reconnecting to battle...', data.attempt)
+        setReconnecting(true)
+        setReconnectAttempt(data.attempt || 0)
+        break
+
+      case 'reconnect_failed':
+        console.warn('Auto-reconnect failed, showing manual reconnect')
+        setReconnecting(false)
+        setError('Connection lost. Please reconnect manually.')
+        break
+
+      case 'connected':
+        console.log('Battle WebSocket reconnected')
+        setWsConnected(true)
+        setReconnecting(false)
+        setReconnectAttempt(0)
+        setError(null)
+        // Catch up on anything missed while disconnected
+        if (battleRoomRef.current?.id) {
+          loadBattleDetails(battleRoomRef.current.id)
+          websocketService.requestBattleState(battleRoomRef.current.id)
+        }
+        break
+
       case 'user_joined':
         console.log('User joined battle:', data.data)
         // Mark opponent as connected when they join the room
@@ -1302,6 +1358,37 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
           </div>
         </div>
       </div>
+
+      {/* Connection status banner: auto-reconnecting OR manual reconnect */}
+      {battleRoom && !wsConnected && (
+        reconnecting ? (
+          <div className={`mb-6 rounded-lg p-4 border flex items-center justify-between ${darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'}`}>
+            <div className="text-sm text-blue-700 dark:text-blue-300 flex items-center">
+              <span className="inline-block w-4 h-4 mr-2 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+              <strong>Reconnecting to battle</strong>
+              {reconnectAttempt > 0 && <span className="ml-1 text-xs opacity-70">(attempt {reconnectAttempt})</span>}
+            </div>
+            <button
+              onClick={reconnectBattle}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium text-sm"
+            >
+              Retry now
+            </button>
+          </div>
+        ) : (
+          <div className={`mb-6 rounded-lg p-4 border flex items-center justify-between ${darkMode ? 'bg-red-900/20 border-red-800' : 'bg-red-50 border-red-200'}`}>
+            <div className="text-sm text-red-700 dark:text-red-300">
+              <strong>⚠️ Real-time connection lost.</strong> You can't receive or send turns until you reconnect.
+            </div>
+            <button
+              onClick={reconnectBattle}
+              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium flex items-center"
+            >
+              <span className="mr-2">↻</span> Reconnect
+            </button>
+          </div>
+        )
+      )}
 
       {/* Side Selection / Battle Ready Screen */}
       {battleRoom.status === 'waiting' && (
