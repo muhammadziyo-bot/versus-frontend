@@ -118,7 +118,7 @@ class AuthService {
   async logout() {
     try {
       await api.post('/auth/logout');
-    } catch (error) {
+    } catch {
       // Even if logout fails on server, clear local storage
     } finally {
       localStorage.removeItem('access_token');

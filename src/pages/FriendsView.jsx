@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { Users, Search, UserPlus, UserCheck, UserX, MessageCircle, Trophy, Target, Bolt, Star, TrendingUp } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Users, Search, UserPlus, UserCheck, UserX, MessageCircle, Star } from 'lucide-react'
 import Header from '../components/Header'
 import friendsService from '../services/friendsService'
 
@@ -11,14 +11,7 @@ function FriendsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin
   const [receivedRequests, setReceivedRequests] = useState([])
   const [sentRequests, setSentRequests] = useState([])
   const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadFriends()
-      loadReceivedRequests()
-      loadSentRequests()
-    }
-  }, [isAuthenticated])
+  const [error, setError] = useState('')
 
   const loadFriends = async () => {
     try {
@@ -50,6 +43,14 @@ function FriendsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin
     }
   }
 
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadFriends()
+      loadReceivedRequests()
+      loadSentRequests()
+    }
+  }, [isAuthenticated])
+
   const handleSearch = async (e) => {
     e.preventDefault()
     if (!searchQuery.trim()) return
@@ -66,6 +67,7 @@ function FriendsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin
   }
 
   const handleSendRequest = async (receiverId) => {
+    setError('')
     try {
       await friendsService.sendFriendRequest(receiverId)
       // Update search results to show request sent
@@ -75,32 +77,35 @@ function FriendsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin
       await loadSentRequests()
     } catch (error) {
       console.error('Failed to send friend request:', error)
-      alert(error.response?.data?.detail || 'Failed to send friend request')
+      setError(error.response?.data?.detail || 'Failed to send friend request')
     }
   }
 
   const handleAcceptRequest = async (requestId) => {
+    setError('')
     try {
       await friendsService.acceptFriendRequest(requestId)
       await loadReceivedRequests()
       await loadFriends()
     } catch (error) {
       console.error('Failed to accept friend request:', error)
-      alert(error.response?.data?.detail || 'Failed to accept friend request')
+      setError(error.response?.data?.detail || 'Failed to accept friend request')
     }
   }
 
   const handleRejectRequest = async (requestId) => {
+    setError('')
     try {
       await friendsService.rejectFriendRequest(requestId)
       await loadReceivedRequests()
     } catch (error) {
       console.error('Failed to reject friend request:', error)
-      alert(error.response?.data?.detail || 'Failed to reject friend request')
+      setError(error.response?.data?.detail || 'Failed to reject friend request')
     }
   }
 
   const handleRemoveFriend = async (friendId) => {
+    setError('')
     if (!confirm('Are you sure you want to remove this friend?')) return
     
     try {
@@ -108,7 +113,7 @@ function FriendsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin
       await loadFriends()
     } catch (error) {
       console.error('Failed to remove friend:', error)
-      alert(error.response?.data?.detail || 'Failed to remove friend')
+      setError(error.response?.data?.detail || 'Failed to remove friend')
     }
   }
 
@@ -165,6 +170,20 @@ function FriendsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin
               Find friends, send challenges, and grow your network
             </p>
           </div>
+
+          {/* Error Banner */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center justify-between">
+              <span>{error}</span>
+              <button
+                onClick={() => setError('')}
+                aria-label="Dismiss error"
+                className="ml-4 p-1 rounded hover:bg-red-200 transition-colors flex-shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Tabs */}
           <div className={`flex space-x-4 mb-8 border-b ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
@@ -242,6 +261,12 @@ function FriendsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin
                               >
                                 @{friend.friend_username}
                               </button>
+                              <span className={`text-xs font-medium flex items-center ${
+                                friend.friend_is_online ? 'text-green-500' : 'text-gray-400'
+                              }`}>
+                                <span className={`w-2 h-2 rounded-full mr-1 ${friend.friend_is_online ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+                                {friend.friend_is_online ? 'Online' : 'Offline'}
+                              </span>
                             </div>
                             <div className="flex items-center space-x-6 mt-1">
                               <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -470,6 +495,12 @@ function FriendsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin
                                 >
                                   @{user.username}
                                 </button>
+                                <span className={`text-xs font-medium flex items-center ${
+                                  user.is_online ? 'text-green-500' : 'text-gray-400'
+                                }`}>
+                                  <span className={`w-2 h-2 rounded-full mr-1 ${user.is_online ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+                                  {user.is_online ? 'Online' : 'Offline'}
+                                </span>
                               </div>
                               <div className="flex items-center space-x-6 mt-1">
                                 <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>

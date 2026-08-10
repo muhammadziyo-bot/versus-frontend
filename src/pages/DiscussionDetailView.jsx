@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { MessageSquare, ThumbsUp, ThumbsDown, Users, Reply, Bookmark, Share, Heart, Flag } from 'lucide-react'
+import { MessageSquare, ThumbsUp, ThumbsDown, Reply, Bookmark, Share, Heart } from 'lucide-react'
 import Header from '../components/Header'
 import Login from '../components/Login'
 import discussionService from '../services/discussionService'
 
-function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user, isAuthenticated, onShowLogin, onProfileSelect }) {
+function DiscussionDetailView({ onBack, darkMode, setDarkMode, user, isAuthenticated, onShowLogin, onProfileSelect }) {
   const { id } = useParams()
   const [comments, setComments] = useState([])
   const [currentDiscussion, setCurrentDiscussion] = useState(null)
@@ -17,6 +17,7 @@ function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user,
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [success, setSuccess] = useState('')
 
   // Fetch discussion details and comments
   useEffect(() => {
@@ -233,7 +234,8 @@ function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user,
     const shareUrl = `${window.location.origin}/discussions/${id}`
     try {
       await navigator.clipboard.writeText(shareUrl)
-      alert('Link copied to clipboard!')
+      setSuccess('Link copied to clipboard!')
+      setTimeout(() => setSuccess(''), 3000)
     } catch (error) {
       console.error('Failed to copy link:', error)
     }
@@ -327,6 +329,13 @@ function DiscussionDetailView({ onBack, darkMode, setDarkMode, onNavigate, user,
             >
               ← Back to Discussions
             </button>
+
+            {/* Success Banner */}
+            {success && (
+              <div className="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
+                {success}
+              </div>
+            )}
 
             {/* Discussion Content */}
             <div className={`rounded-lg shadow-md p-6 mb-8 ${darkMode ? 'bg-card-bg border-gray-800' : 'bg-white border-gray-200'}`}>

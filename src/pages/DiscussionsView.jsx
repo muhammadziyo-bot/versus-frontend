@@ -1,27 +1,8 @@
-import React, { useState } from 'react'
-import { MessageSquare, Users, TrendingUp, Settings, HelpCircle, Target, Pin, Clock, Bolt, Star, Gem, Reply, MoreHorizontal, Share, Bookmark, Flag, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { useState } from 'react'
+import { MessageSquare, Users, TrendingUp, Pin, Clock, MoreHorizontal, Share, Bookmark, ThumbsUp, ThumbsDown } from 'lucide-react'
 import Header from '../components/Header'
 import MotivationalQuote from '../components/MotivationalQuote'
 import discussionService from '../services/discussionService'
-
-const getAvatarIcon = (avatar) => {
-  // Handle both old emoji avatars and potential new icon IDs
-  switch(avatar) {
-    case '🎯':
-    case 'target':
-      return <Target className="w-5 h-5" />;
-    case '🔥':
-    case 'trending':
-      return <TrendingUp className="w-5 h-5" />;
-    case '⚡':
-    case 'bolt':
-      return <Bolt className="w-5 h-5" />;
-    case '🌟':
-    case 'star':
-      return <Star className="w-5 h-5" />;
-    default: return <Users className="w-5 h-5" />;
-  }
-}
 
 function DiscussionsView({ discussions, setDiscussions, discussionStats, dataLoading, darkMode, setDarkMode, user, isAuthenticated, onShowLogin, refreshData, onDiscussionSelect, onProfileSelect }) {
   const [sortBy, setSortBy] = useState('hot') // hot, new, top, controversial
@@ -404,7 +385,7 @@ function DiscussionsView({ discussions, setDiscussions, discussionStats, dataLoa
                       
                       {/* Discussion preview */}
                       <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'} line-clamp-2`}>
-                        This is a preview of the discussion content. Users can click to see the full discussion with all comments and replies...
+                        {discussion.content || 'No preview available'}
                       </p>
                       
                       <div className="flex items-center justify-between">

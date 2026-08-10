@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { HelpCircle, MessageSquare, Book, Mail, Search, ChevronDown, ChevronUp, ExternalLink, Rocket, Scale, Shield } from 'lucide-react'
+import { useState } from 'react'
+import { HelpCircle, Mail, Search, ChevronDown, ChevronUp, Rocket, Scale, Shield } from 'lucide-react'
 import Header from '../components/Header'
 
 function HelpView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, onProfileSelect }) {
@@ -24,7 +24,7 @@ function HelpView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, o
         {
           id: 3,
           question: "How do I create a new debate topic?",
-          answer: "Currently, topic creation is managed by moderators. However, you can suggest new topics in the Discussions section or contact our team directly."
+          answer: "Click the 'Propose New Topic' button on the Arena page to suggest a debate topic. Topics are reviewed before appearing publicly for community participation."
         }
       ]
     },
@@ -45,7 +45,7 @@ function HelpView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, o
         {
           id: 6,
           question: "Can I change my vote after participating?",
-          answer: "Yes, you can change your vote within the first 30 minutes of participating. After that, votes are locked to maintain debate integrity."
+          answer: "Votes are final once submitted. If you have concerns about your vote, please contact our support team."
         }
       ]
     },
@@ -56,7 +56,7 @@ function HelpView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, o
         {
           id: 7,
           question: "How do I delete my account?",
-          answer: "Go to Settings > Privacy & Security > Delete Account. Please note this action is permanent and cannot be undone. Your debates will remain anonymous."
+          answer: "To request account deletion, please contact our support team at support@digitalarena.app. This action is permanent and cannot be undone; your debates will remain anonymous."
         },
         {
           id: 8,
@@ -72,37 +72,12 @@ function HelpView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, o
     }
   ]
 
-  const supportOptions = [
-    {
-      title: "Live Chat Support",
-      description: "Get instant help from our support team",
-      icon: MessageSquare,
-      action: "Start Chat",
-      available: "24/7"
-    },
-    {
-      title: "Email Support",
-      description: "Send us detailed questions or reports",
-      icon: Mail,
-      action: "Send Email",
-      available: "Response within 24h"
-    },
-    {
-      title: "Help Center",
-      description: "Browse our comprehensive documentation",
-      icon: Book,
-      action: "Visit Help Center",
-      available: "Always available"
-    }
-  ]
-
   const toggleFAQ = (id) => {
     setExpandedFAQ(expandedFAQ === id ? null : id)
   }
 
   return (
-    <div className={`min-h-screen flex ${darkMode ? 'bg-academic-midnight text-off-white' : 'bg-gray-50 text-gray-900'} transition-colors duration-300`}>
-      <div className="flex-1">
+    <div className="flex-1">
         <Header 
           title="Help Center" 
           icon={HelpCircle}
@@ -145,40 +120,24 @@ function HelpView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, o
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {supportOptions.map((option, index) => (
-            <div 
-              key={index}
-              className={`rounded-lg border p-6 hover:shadow-lg transition-all cursor-pointer ${
-                darkMode ? 'bg-card-bg border-gray-800 hover:border-green-500' : 'bg-white border-gray-200 hover:border-green-500'
-              }`}
-            >
-              <div className="flex items-center space-x-3 mb-4">
-                <option.icon className="w-6 h-6 text-green-500" />
-                <h3 className="font-semibold">{option.title}</h3>
-              </div>
-              <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                {option.description}
-              </p>
-              <div className="flex items-center justify-between">
-                <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                  {option.available}
-                </span>
-                <button className="text-electric-blue hover:text-blue-600 text-sm font-medium flex items-center space-x-1">
-                  <span>{option.action}</span>
-                  <ExternalLink className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
         {/* FAQ Section */}
         <div className="mb-12">
           <h2 className="text-2xl font-bold mb-8">Frequently Asked Questions</h2>
           
-          {faqCategories.map((category) => (
+          {faqCategories
+            .map((category) => {
+              const term = searchQuery.trim().toLowerCase()
+              const matchingQuestions = term
+                ? category.questions.filter(
+                    (faq) =>
+                      faq.question.toLowerCase().includes(term) ||
+                      faq.answer.toLowerCase().includes(term)
+                  )
+                : category.questions
+              return { ...category, questions: matchingQuestions }
+            })
+            .filter((category) => category.questions.length > 0)
+            .map((category) => (
             <div key={category.title} className="mb-8">
               <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2">
                 <category.icon className="w-6 h-6 text-electric-blue" />
@@ -215,6 +174,19 @@ function HelpView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, o
               </div>
             </div>
           ))}
+
+          {searchQuery.trim() && faqCategories.every((c) => {
+            const term = searchQuery.trim().toLowerCase()
+            return !c.questions.some(
+              (faq) => faq.question.toLowerCase().includes(term) || faq.answer.toLowerCase().includes(term)
+            )
+          }) && (
+            <div className="text-center py-8">
+              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                No help articles found for "{searchQuery.trim()}". Try a different search.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Popular Topics */}
@@ -253,22 +225,20 @@ function HelpView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, o
             Our support team is here to help you with any questions or issues you might have.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button className="px-6 py-3 bg-electric-blue text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center space-x-2">
-              <MessageSquare className="w-5 h-5" />
-              <span>Start Live Chat</span>
-            </button>
-            <button className={`px-6 py-3 rounded-lg border transition-colors flex items-center justify-center space-x-2 ${
-              darkMode 
-                ? 'border-gray-700 text-gray-300 hover:bg-gray-800' 
-                : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-            }`}>
-              <Mail className="w-5 h-5" />
+            <a
+              href="mailto:support@digitalarena.app"
+              className={`inline-flex items-center justify-center px-6 py-3 rounded-lg border transition-colors ${
+                darkMode 
+                  ? 'border-gray-700 text-gray-300 hover:bg-gray-800' 
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <Mail className="w-5 h-5 mr-2" />
               <span>Email Support</span>
-            </button>
+            </a>
           </div>
         </div>
         </main>
-      </div>
     </div>
   )
 }

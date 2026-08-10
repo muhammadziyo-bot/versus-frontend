@@ -770,7 +770,7 @@ function SettingsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogi
                       ? 'bg-gray-900 border-gray-700 text-off-white' 
                       : 'bg-gray-50 border-gray-300 text-gray-900'
                   }`}
-                  placeholder="Enter new password (min 6 characters)"
+                  placeholder="Enter new password (min 8 characters)"
                 />
               </div>
               <div>

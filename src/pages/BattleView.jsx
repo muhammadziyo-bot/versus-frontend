@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { Sword, Users, MessageSquare, Clock, Trophy, Send, Play, User, Timer, ArrowLeft, Search, Shuffle, Users2, Loader2 } from 'lucide-react'
+import { Sword, Users, MessageSquare, Trophy, Send, Play, Timer, ArrowLeft, Search, Shuffle, Users2, Loader2, UserPlus } from 'lucide-react'
 import battleService from '../services/battleService'
 import websocketService from '../services/websocketService'
 import authService from '../services/authService'
 import matchmakingService from '../services/matchmakingService'
 import debateService from '../services/debateService'
+import friendsService from '../services/friendsService'
 import { useAuth } from '../contexts/AuthContext'
 import BattleResults from '../components/BattleResults'
 
@@ -12,21 +13,16 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const { user } = useAuth()
   const [battleRoom, setBattleRoom] = useState(null)
   const [rounds, setRounds] = useState([])
-  const [votes, setVotes] = useState([])
   const [messages, setMessages] = useState([])
   const [currentRound, setCurrentRound] = useState(1)
   const [wsConnected, setWsConnected] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [showCreateBattle, setShowCreateBattle] = useState(true)
-  const [opponent, setOpponent] = useState(null)
   const [isSearching, setIsSearching] = useState(false)
   const [queueStatus, setQueueStatus] = useState(null)
   const [matchingError, setMatchingError] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
-  const [availableUsers, setAvailableUsers] = useState([])
-  const [showRandomMatching, setShowRandomMatching] = useState(false)
   const [isLeavingQueue, setIsLeavingQueue] = useState(false)
   const [opponentUsername, setOpponentUsername] = useState('')
   const [chatMessage, setChatMessage] = useState('')
@@ -45,19 +41,24 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   const [showAIResults, setShowAIResults] = useState(false)
   const [timeRemaining, setTimeRemaining] = useState(0)
   const [showRoundHistory, setShowRoundHistory] = useState(false)
-  const [showSideSelection, setShowSideSelection] = useState(false)
-  const [selectedSide, setSelectedSide] = useState(null)
   const [userSide, setUserSide] = useState(null) // Store user side directly
   
   // Random matching states
-  const [matchingMode, setMatchingMode] = useState('manual') // 'manual' or 'random'
+  const [matchingMode, setMatchingMode] = useState('manual') // 'manual', 'random', 'friends'
+  
+  // Friend invite states
+  const [friendsList, setFriendsList] = useState([])
+  const [loadingFriends, setLoadingFriends] = useState(false)
+  const [opponentConnected, setOpponentConnected] = useState(false)
   
   const messagesEndRef = useRef(null)
   const argumentRef = useRef(null)
   const timerRef = useRef(null)
   const battleRoomRef = useRef(null)
   // Keep ref in sync with state so closures always see the latest value
-  battleRoomRef.current = battleRoom
+  useEffect(() => {
+    battleRoomRef.current = battleRoom
+  }, [battleRoom])
 
   useEffect(() => {
     if (battleRoomId) {
@@ -101,8 +102,6 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
           clearInterval(timerRef.current)
         }
       }
-    } else {
-      setTimeRemaining(0)
     }
   }, [battleRoom, rounds])
 
@@ -115,7 +114,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       }
     }
 
-    const handleBeforeUnload = (e) => {
+    const handleBeforeUnload = () => {
       if (isSearching) {
         console.log('Page unloading, leaving matchmaking queue...')
         // Use sendBeacon for reliable cleanup during page unload
@@ -144,7 +143,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     }
   }, [isSearching])
 
-  const cleanupMatchmaking = async () => {
+  async function cleanupMatchmaking() {
     if (isSearching && !isLeavingQueue) {
       setIsLeavingQueue(true)
       try {
@@ -164,25 +163,18 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const loadBattleData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      setShowCreateBattle(true)
-
-    } catch (err) {
-      setError('Failed to load battle data')
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
+  function loadBattleData() {
+    setLoading(false)
+    setError(null)
+    setShowCreateBattle(true)
   }
 
-  const loadExistingBattleRoom = async (roomId) => {
+  async function loadExistingBattleRoom(roomId) {
     try {
       setLoading(true)
       setError(null)
       setShowCreateBattle(false)
+      setOpponentConnected(false)
 
       // Load battle room details (now includes user information)
       const battle = await battleService.getBattleRoom(roomId)
@@ -296,6 +288,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         console.log('Created Battle Room:', battle)
         setBattleRoom(battle)
         setShowCreateBattle(false)
+        setOpponentConnected(false)
         
         await connectToBattle(battle.id)
         await loadBattleDetails(battle.id)
@@ -463,12 +456,50 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     }
   }
 
-  const loadAvailableUsers = async () => {
+  const loadFriends = async () => {
+    setLoadingFriends(true)
     try {
-      const users = await matchmakingService.getOnlineUsers()
-      setAvailableUsers(users.filter(u => u.id !== user?.id))
+      const data = await friendsService.getFriends()
+      setFriendsList(data)
     } catch (err) {
-      console.error('Error loading available users:', err)
+      console.error('Failed to load friends:', err)
+    } finally {
+      setLoadingFriends(false)
+    }
+  }
+
+  const inviteFriend = async (friend) => {
+    try {
+      setMatchingError('')
+      const parsedDebateId = debateId ? parseInt(debateId) : NaN
+      if (!debateId || isNaN(parsedDebateId)) {
+        setMatchingError('Invalid debate ID. Please navigate to a valid debate topic.')
+        return
+      }
+
+      try {
+        const debate = await debateService.getDebateById(parsedDebateId)
+        setDebateTitle(debate.title || 'Unknown Topic')
+      } catch (err) {
+        console.error('Failed to load debate title:', err)
+        setDebateTitle('Unknown Topic')
+      }
+
+      const battleData = {
+        debate_id: parsedDebateId,
+        opponent_id: friend.friend_id
+      }
+
+      const battle = await battleService.createBattleRoom(battleData)
+      setBattleRoom(battle)
+      setShowCreateBattle(false)
+      setOpponentConnected(false)
+
+      await connectToBattle(battle.id)
+      await loadBattleDetails(battle.id)
+    } catch (err) {
+      setMatchingError(err.message || 'Failed to create battle room')
+      console.error(err)
     }
   }
 
@@ -511,7 +542,6 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       case 'battle_state':
         setBattleRoom(data.data.battle)
         setRounds(data.data.rounds || [])
-        setVotes(data.data.votes || [])
         setCurrentRound(data.data.battle.current_round)
         // Load debate title if debate_id is present
         if (data.data.battle.debate_id && !debateTitle) {
@@ -569,8 +599,6 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
             setUserSide('con')
           }
         }
-        // Hide side selection when battle starts
-        setShowSideSelection(false)
         break
         
       case 'side_selected':
@@ -590,7 +618,10 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         
       case 'user_joined':
         console.log('User joined battle:', data.data)
-        // Just log it, no action needed
+        // Mark opponent as connected when they join the room
+        if (data.data.user_id && data.data.user_id !== user?.id) {
+          setOpponentConnected(true)
+        }
         break
         
       default:
@@ -600,10 +631,9 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
 
   const loadBattleDetails = async (battleId, userData = user) => {
     try {
-      const [battle, battleRounds, battleVotes] = await Promise.all([
+      const [battle, battleRounds] = await Promise.all([
         battleService.getBattleRoom(battleId),
-        battleService.getBattleRounds(battleId),
-        battleService.getBattleVotes(battleId)
+        battleService.getBattleRounds(battleId)
       ])
       
       console.log('=== BATTLE DETAILS LOADED ===')
@@ -618,7 +648,6 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       
       setBattleRoom(battle)
       setRounds(battleRounds)
-      setVotes(battleVotes)
       setCurrentRound(battle.current_round)
       
       // Re-determine user side after loading battle details
@@ -749,13 +778,10 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
   }
 
   const isOpponentConnected = () => {
-    // Check if opponent is connected via WebSocket
-    // This would be determined by WebSocket presence
-    // For now, we'll check if both users are present and battle is active
-    return battleRoom && battleRoom.status === 'active' && wsConnected
+    return opponentConnected && wsConnected
   }
 
-  const getCurrentRound = () => {
+  function getCurrentRound() {
     return rounds.find(r => r.round_number === currentRound)
   }
 
@@ -821,7 +847,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         {/* Matching Mode Selection */}
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-3">Choose Battle Type</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <button
               onClick={() => setMatchingMode('manual')}
               className={`p-4 rounded-lg border-2 transition-all ${
@@ -846,6 +872,22 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
               <Shuffle className="w-6 h-6 mx-auto mb-2" />
               <div className="font-medium">Random Battle</div>
               <div className="text-sm text-gray-500 dark:text-gray-400">Match with anyone online</div>
+            </button>
+
+            <button
+              onClick={() => {
+                setMatchingMode('friends')
+                loadFriends()
+              }}
+              className={`p-4 rounded-lg border-2 transition-all ${
+                matchingMode === 'friends'
+                  ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                  : 'border-gray-300 dark:border-gray-600 hover:border-gray-400'
+              }`}
+            >
+              <UserPlus className="w-6 h-6 mx-auto mb-2" />
+              <div className="font-medium">Invite My Friends</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">Challenge a friend</div>
             </button>
           </div>
         </div>
@@ -950,6 +992,70 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
           </div>
         )}
 
+        {/* Invite Friends Section */}
+        {matchingMode === 'friends' && (
+          <div className="space-y-4">
+            {loadingFriends ? (
+              <div className="text-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-green-500" />
+                <h3 className="text-lg font-semibold mb-2">Loading your friends...</h3>
+              </div>
+            ) : friendsList.length > 0 ? (
+              <div>
+                <div className={`p-3 rounded-lg mb-3 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                  <div className="text-sm">
+                    <strong>Invite a Friend:</strong> Select a friend to challenge them to a debate on this topic.
+                  </div>
+                </div>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {friendsList.map((friend) => (
+                    <button
+                      key={friend.friend_id}
+                      onClick={() => inviteFriend(friend)}
+                      className={`w-full p-3 text-left rounded-lg border transition-all hover:border-green-400 ${
+                        darkMode ? 'border-gray-700 bg-gray-800 hover:bg-gray-700' : 'border-gray-300 bg-white hover:bg-gray-50'
+                      } flex items-center justify-between`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        {friend.friend_avatar_url ? (
+                          <img src={friend.friend_avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
+                        ) : (
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                            <Users className="w-4 h-4 text-gray-400" />
+                          </div>
+                        )}
+                        <div>
+                          <div className="font-medium">{friend.friend_full_name || friend.friend_username}</div>
+                          <div className="text-xs text-gray-500">@{friend.friend_username} • ELO: {friend.friend_elo_rating || 400}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-xs font-medium flex items-center ${
+                          friend.friend_is_online ? 'text-green-500' : 'text-gray-400'
+                        }`}>
+                          <span className={`w-2 h-2 rounded-full mr-1 ${friend.friend_is_online ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+                          {friend.friend_is_online ? 'Online' : 'Offline'}
+                        </span>
+                        <span className={`px-3 py-1 rounded-lg text-sm font-medium bg-green-500 text-white hover:bg-green-600`}>
+                          Invite
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Users className={`w-12 h-12 mx-auto mb-3 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
+                <h3 className="text-lg font-semibold mb-2">No friends yet</h3>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Add friends from the Friends page to invite them to a battle.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Error Display */}
         {matchingError && (
           <div className="text-red-500 text-sm p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
@@ -960,23 +1066,25 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         {/* Action Buttons */}
         {!isSearching && (
           <div className="flex space-x-3">
-            <button
-              onClick={createBattle}
-              disabled={matchingMode === 'manual' && !opponentUsername}
-              className={`flex-1 p-3 rounded-lg font-medium transition-colors ${
-                matchingMode === 'manual' && !opponentUsername
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : matchingMode === 'manual'
-                  ? 'bg-blue-500 text-white hover:bg-blue-600'
-                  : 'bg-purple-500 text-white hover:bg-purple-600'
-              }`}
-            >
-              {matchingMode === 'manual' ? 'Challenge User' : 'Find Random Battle'}
-            </button>
+            {matchingMode !== 'friends' && (
+              <button
+                onClick={createBattle}
+                disabled={matchingMode === 'manual' && !opponentUsername}
+                className={`flex-1 p-3 rounded-lg font-medium transition-colors ${
+                  matchingMode === 'manual' && !opponentUsername
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : matchingMode === 'manual'
+                    ? 'bg-blue-500 text-white hover:bg-blue-600'
+                    : 'bg-purple-500 text-white hover:bg-purple-600'
+                }`}
+              >
+                {matchingMode === 'manual' ? 'Challenge User' : 'Find Random Battle'}
+              </button>
+            )}
             
             <button
               onClick={onBack}
-              className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+              className={`px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 ${matchingMode === 'friends' ? 'w-full' : ''}`}
             >
               Cancel
             </button>
@@ -1068,7 +1176,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
             <div className="text-sm text-gray-500">Status</div>
             <div className="font-medium capitalize">{battleRoom.status}</div>
             <div className="text-xs text-gray-500">Round {currentRound}/{battleRoom.max_rounds}</div>
-            {battleRoom.status === 'active' && timeRemaining > 0 && (
+            {battleRoom.status === 'active' && getCurrentRound()?.status === 'active' && timeRemaining > 0 && (
               <div className={`text-xs font-medium ${timeRemaining < 30 ? 'text-red-500' : 'text-green-500'}`}>
                 <Timer className="w-3 h-3 inline mr-1" />
                 {formatTime(timeRemaining)}
@@ -1191,13 +1299,34 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
                 {battleRoom.max_rounds} rounds • {Math.floor(battleRoom.round_time_limit / 60)} minutes per round
               </p>
             </div>
+
+            <div className={`mb-4 p-4 rounded-lg ${
+              isOpponentConnected()
+                ? 'bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800'
+                : 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'
+            }`}>
+              {isOpponentConnected() ? (
+                <p className={`text-sm ${darkMode ? 'text-green-300' : 'text-green-700'}`}>
+                  <strong>✓ {getUserName(battleRoom.pro_user_id === user?.id ? battleRoom.con_user_id : battleRoom.pro_user_id)} is ready!</strong> You can now start the battle.
+                </p>
+              ) : (
+                <p className={`text-sm ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                  <strong>⏳ Waiting for your opponent to join the battle room...</strong> They must accept the invitation before the battle can begin.
+                </p>
+              )}
+            </div>
             
             <button
               onClick={startBattle}
-              className="bg-green-500 text-white px-8 py-3 rounded-lg hover:bg-green-600 font-medium flex items-center justify-center mx-auto"
+              disabled={!isOpponentConnected()}
+              className={`${
+                isOpponentConnected()
+                  ? 'bg-green-500 hover:bg-green-600'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              } text-white px-8 py-3 rounded-lg font-medium flex items-center justify-center mx-auto transition-colors`}
             >
               <Play className="w-5 h-5 mr-2" />
-              Start Battle
+              {isOpponentConnected() ? 'Start Battle' : 'Waiting for Opponent...'}
             </button>
           </div>
         </div>

@@ -1,16 +1,28 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { User, Calendar, Trophy, Target, Shield, MessageCircle } from 'lucide-react'
+import { User, Calendar, Target, Shield, MessageCircle } from 'lucide-react'
 import Header from '../components/Header'
-import axios from 'axios'
+import userService from '../services/userService'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
-
-function ProfileView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, onBack, onNavigate, onProfileSelect }) {
+function ProfileView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin, onBack, onProfileSelect }) {
   const { username } = useParams()
   const [profileUser, setProfileUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  const loadUserProfile = async () => {
+    try {
+      setLoading(true)
+      const data = await userService.getUserProfile(username)
+      setProfileUser(data)
+      setError(null)
+    } catch (err) {
+      setError(err.response?.data?.detail || err.detail || 'Failed to load user profile')
+      console.error('Error loading profile:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (username) {
@@ -20,20 +32,6 @@ function ProfileView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin
       setLoading(false)
     }
   }, [username])
-
-  const loadUserProfile = async () => {
-    try {
-      setLoading(true)
-      const response = await axios.get(`${API_BASE_URL}/api/users/username/${username}`)
-      setProfileUser(response.data)
-      setError(null)
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load user profile')
-      console.error('Error loading profile:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   if (loading) {
     return (

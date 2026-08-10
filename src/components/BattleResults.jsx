@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Trophy, TrendingUp, TrendingDown, Brain, Clock, Award, Zap, Target, BookOpen, Lightbulb, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Trophy, TrendingUp, TrendingDown, Brain, Clock, Award, Target, BookOpen, Lightbulb, AlertCircle, Loader2 } from 'lucide-react'
 import battleService from '../services/battleService'
 
 const BattleResults = ({ battleRoomId, darkMode }) => {
@@ -7,27 +7,9 @@ const BattleResults = ({ battleRoomId, darkMode }) => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [pollCount, setPollCount] = useState(0)
+  const intervalRef = useRef(null)
 
-  useEffect(() => {
-    pollForResult()
-    const interval = setInterval(pollForResult, 3000) // Poll every 3 seconds
-    
-    // Stop polling after 2 minutes
-    const timeout = setTimeout(() => {
-      clearInterval(interval)
-      if (!aiResult) {
-        setError('Results are taking longer than expected. Please check back later.')
-        setLoading(false)
-      }
-    }, 120000)
-
-    return () => {
-      clearInterval(interval)
-      clearTimeout(timeout)
-    }
-  }, [battleRoomId])
-
-  const pollForResult = async () => {
+  async function pollForResult() {
     try {
       setPollCount(prev => prev + 1)
       const result = await battleService.getAIResult(battleRoomId)
@@ -35,7 +17,7 @@ const BattleResults = ({ battleRoomId, darkMode }) => {
       if (result) {
         setAiResult(result)
         setLoading(false)
-        clearInterval(interval)
+        clearInterval(intervalRef.current)
       }
     } catch (err) {
       if (err.response?.status === 404) {
@@ -49,6 +31,25 @@ const BattleResults = ({ battleRoomId, darkMode }) => {
       }
     }
   }
+
+  useEffect(() => {
+    pollForResult()
+    intervalRef.current = setInterval(pollForResult, 3000) // Poll every 3 seconds
+    
+    // Stop polling after 2 minutes
+    const timeout = setTimeout(() => {
+      clearInterval(intervalRef.current)
+      if (!aiResult) {
+        setError('Results are taking longer than expected. Please check back later.')
+        setLoading(false)
+      }
+    }, 120000)
+
+    return () => {
+      clearInterval(intervalRef.current)
+      clearTimeout(timeout)
+    }
+  }, [battleRoomId])
 
   if (loading) {
     return (
@@ -89,13 +90,6 @@ const BattleResults = ({ battleRoomId, darkMode }) => {
     if (score >= 6) return 'text-blue-500'
     if (score >= 4) return 'text-yellow-500'
     return 'text-red-500'
-  }
-
-  const getScoreBarColor = (score) => {
-    if (score >= 8) return 'bg-green-500'
-    if (score >= 6) return 'bg-blue-500'
-    if (score >= 4) return 'bg-yellow-500'
-    return 'bg-red-500'
   }
 
   const winnerText = aiResult.winner_side === 'draw' 

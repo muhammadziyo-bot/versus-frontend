@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom'
-import { Sword, Users, MessageSquare, TrendingUp, Settings, HelpCircle, Shield, Bot, GraduationCap, Scale, Globe, Microscope, Building2, Palette, Trophy, Zap, Bell, Book, UserPlus } from 'lucide-react'
+import { Sword, TrendingUp, Shield, Bot, GraduationCap, Scale, Globe, Microscope, Building2, Palette, Trophy, Zap, Bell, Book } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import TopicCard from './components/TopicCard'
@@ -16,7 +16,6 @@ import BattleView from './pages/BattleView'
 import FriendsView from './pages/FriendsView'
 import DiscussionDetailView from './pages/DiscussionDetailView'
 import ProfileView from './pages/ProfileView'
-import Login from './components/Login'
 import TopicProposalModal from './components/TopicProposalModal'
 import NotificationCenter from './components/NotificationCenter'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -81,7 +80,7 @@ const BattleRoomWrapper = ({ darkMode, onBack }) => {
 }
 
 // Wrapper components for each route to provide common context
-const Layout = ({ children, darkMode, setDarkMode, currentView }) => (
+const Layout = ({ children, darkMode, currentView }) => (
   <div className={`min-h-screen flex ${darkMode ? 'bg-academic-midnight text-off-white' : 'bg-gray-50 text-gray-900'} transition-colors duration-300`}>
     <Sidebar currentView={currentView} darkMode={darkMode} />
     <div className="flex-1 min-w-0">
@@ -112,25 +111,6 @@ function AppContent() {
   const [dataLoading, setDataLoading] = useState(true)
   const [currentBattle, setCurrentBattle] = useState(null)
   const [battleError, setBattleError] = useState(null)
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchData()
-      loadUnreadCount()
-    } else {
-      setTopics([])
-      setClubs([])
-      setDebaters([])
-      setDiscussions([])
-      setDebateStats({})
-      setClubStats({})
-      setUserStats({})
-      setDiscussionStats({})
-      setBattleStats({})
-      setDataLoading(false)
-      setUnreadCount(0)
-    }
-  }, [isAuthenticated])
 
   const loadUnreadCount = async () => {
     try {
@@ -170,6 +150,25 @@ function AppContent() {
       setDataLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchData()
+      loadUnreadCount()
+    } else {
+      setTopics([])
+      setClubs([])
+      setDebaters([])
+      setDiscussions([])
+      setDebateStats({})
+      setClubStats({})
+      setUserStats({})
+      setDiscussionStats({})
+      setBattleStats({})
+      setDataLoading(false)
+      setUnreadCount(0)
+    }
+  }, [isAuthenticated])
 
   const refreshData = () => {
     if (isAuthenticated) {

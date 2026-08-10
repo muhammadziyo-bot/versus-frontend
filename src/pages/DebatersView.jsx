@@ -1,24 +1,18 @@
-import React, { useState, useEffect } from 'react'
-import { Users, Trophy, MessageSquare, TrendingUp, Target, Bolt, Star, Gem, Calendar } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Users, Trophy, MessageSquare, TrendingUp, Star } from 'lucide-react'
 import Header from '../components/Header'
+import userService from '../services/userService'
 
 function DebatersView({ userStats, dataLoading, darkMode, setDarkMode, user, isAuthenticated, onShowLogin, onProfileSelect }) {
   const [activeTab, setActiveTab] = useState('all')
   const [leaderboard, setLeaderboard] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchLeaderboard(activeTab)
-  }, [activeTab])
-
   const fetchLeaderboard = async (period) => {
     setLoading(true)
     try {
-      const response = await fetch(`http://localhost:8000/api/users/leaderboard?period=${period}`)
-      if (response.ok) {
-        const data = await response.json()
-        setLeaderboard(data)
-      }
+      const data = await userService.getLeaderboard(period)
+      setLeaderboard(data)
     } catch (error) {
       console.error('Failed to fetch leaderboard:', error)
     } finally {
@@ -26,7 +20,11 @@ function DebatersView({ userStats, dataLoading, darkMode, setDarkMode, user, isA
     }
   }
 
-  const getAvatarIcon = (rank) => {
+  useEffect(() => {
+    fetchLeaderboard(activeTab)
+  }, [activeTab])
+
+  const getAvatarIcon = () => {
     return <Star className="w-6 h-6" />
   }
 

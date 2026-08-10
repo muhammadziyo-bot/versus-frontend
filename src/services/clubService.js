@@ -1,6 +1,4 @@
-import axios from 'axios';
-
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000') + '/api';
+import api from './httpClient';
 
 // Normalize FastAPI errors: validation errors have `detail` as an array of
 // objects, which would crash React if rendered directly. Always produce a string.
@@ -15,28 +13,6 @@ function toErrorMessage(error, fallback) {
   }
   return fallback;
 }
-
-// Create axios instance
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// Add request interceptor to include auth token
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
 
 class ClubService {
   async getClubs(skip = 0, limit = 100) {
