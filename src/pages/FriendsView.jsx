@@ -45,6 +45,8 @@ function FriendsView({ darkMode, setDarkMode, user, isAuthenticated, onShowLogin
 
   useEffect(() => {
     if (isAuthenticated) {
+      // Fetch-on-mount data loading is intentional here
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadFriends()
       loadReceivedRequests()
       loadSentRequests()

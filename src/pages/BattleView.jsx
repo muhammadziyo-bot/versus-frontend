@@ -60,33 +60,10 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
     battleRoomRef.current = battleRoom
   }, [battleRoom])
 
-  useEffect(() => {
-    if (battleRoomId) {
-      // Join existing battle room
-      loadExistingBattleRoom(battleRoomId)
-    } else if (debateId) {
-      // Create new battle from debate
-      loadBattleData()
-    }
-
-    return () => {
-      // Leave matchmaking queue if we're searching
-      cleanupMatchmaking()
-
-      if (battleRoomRef.current) {
-        websocketService.disconnectFromBattle(battleRoomRef.current.id)
-      }
-      
-      // Clear timer
-      if (timerRef.current) {
-        clearInterval(timerRef.current)
-      }
-    }
-  }, [debateId, battleRoomId])
-
   // Timer effect - only start when battle is active AND rounds are active
   useEffect(() => {
-    if (battleRoom && battleRoom.status === 'active' && getCurrentRound()?.status === 'active' && battleRoom.round_ends_at) {
+    const currentRoundObj = rounds.find(r => r.round_number === currentRound)
+    if (battleRoom && battleRoom.status === 'active' && currentRoundObj?.status === 'active' && battleRoom.round_ends_at) {
       const updateTimer = () => {
         const now = new Date()
         const endsAt = new Date(battleRoom.round_ends_at)
@@ -103,7 +80,7 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
         }
       }
     }
-  }, [battleRoom, rounds])
+  }, [battleRoom, rounds, currentRound])
 
   // Handle page visibility change (user switching tabs/closing browser)
   useEffect(() => {
@@ -141,6 +118,8 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
+    // cleanupMatchmaking intentionally omitted: it reads the latest isSearching via closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSearching])
 
   async function cleanupMatchmaking() {
@@ -242,6 +221,35 @@ const BattleView = ({ debateId, battleRoomId, onBack, darkMode }) => {
       setLoading(false)
     }
   }
+
+  // Load the battle room when this view mounts or the room/topic changes.
+  useEffect(() => {
+    if (battleRoomId) {
+      // Join existing battle room
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadExistingBattleRoom(battleRoomId)
+    } else if (debateId) {
+      // Create new battle from debate
+      loadBattleData()
+    }
+
+    return () => {
+      // Leave matchmaking queue if we're searching
+      cleanupMatchmaking()
+
+      if (battleRoomRef.current) {
+        websocketService.disconnectFromBattle(battleRoomRef.current.id)
+      }
+      
+      // Clear timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+      }
+    }
+    // loadExistingBattleRoom / loadBattleData / cleanupMatchmaking are used
+    // intentionally on room entry/exit only, so they're deliberately omitted from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debateId, battleRoomId])
 
   const createBattle = async () => {
     if (matchingMode === 'manual' && !opponentUsername) {
